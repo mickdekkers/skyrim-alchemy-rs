@@ -8,9 +8,9 @@ use nom::sequence::{delimited, tuple};
 use nom::IResult;
 
 // use crate::error::Error;
-use esplugin::GameId;
 use esplugin::record::Record;
 use esplugin::record_id::RecordId;
+use esplugin::GameId;
 
 const GROUP_TYPE: &[u8] = b"GRUP";
 
@@ -26,55 +26,73 @@ pub type RecordType = [u8; 4];
 #[derive(Clone, PartialEq, Eq, Debug, Hash, Default)]
 pub struct GroupHeader {
     size_of_group_records: u32,
-    label: RecordType
+    label: RecordType,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Hash)]
 pub enum GroupRecord {
     Group(Group),
-    Record(Record)
+    Record(Record),
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Hash, Default)]
 pub struct Group {
     header: GroupHeader,
-    group_records: Vec<GroupRecord>
+    group_records: Vec<GroupRecord>,
 }
 
 impl Group {
-    pub fn parse(input: &[u8], game_id: GameId, skip_group_records: fn(RecordType) -> bool) -> IResult<&[u8], Group> {
-        group(input, game_id, skip_group_records)
+    pub fn parse(
+        input: &[u8],
+        skip_group_records: fn(RecordType) -> bool,
+    ) -> IResult<&[u8], Group> {
+        group(input, skip_group_records)
     }
 }
 
-fn group(input: &[u8], game_id: GameId, skip_group_records: fn(RecordType) -> bool) -> IResult<&[u8], Group> {
+fn group(input: &[u8], skip_group_records: fn(RecordType) -> bool) -> IResult<&[u8], Group> {
     let (remaining_input, header) = group_header(input)?;
-    let (remaining_input, group_records_data) = take(header.size_of_group_records)(remaining_input)?;
+    let (remaining_input, group_records_data) =
+        take(header.size_of_group_records)(remaining_input)?;
 
     let group_records: Vec<GroupRecord> = if !skip_group_records(header.label) {
-        parse_group_records(group_records_data, game_id, header.size_of_group_records, skip_group_records)?.1
+        parse_group_records(
+            group_records_data,
+            header.size_of_group_records,
+            skip_group_records,
+        )?
+        .1
     } else {
         Vec::new()
     };
 
-    Ok((remaining_input, Group { header, group_records }))
+    Ok((
+        remaining_input,
+        Group {
+            header,
+            group_records,
+        },
+    ))
 }
 
-fn parse_group_records(input: &[u8], game_id: GameId, size_of_group_records: u32, skip_group_records: fn(RecordType) -> bool) -> IResult<&[u8], Vec<GroupRecord>> {
+fn parse_group_records(
+    input: &[u8],
+    size_of_group_records: u32,
+    skip_group_records: fn(RecordType) -> bool,
+) -> IResult<&[u8], Vec<GroupRecord>> {
     let mut input1 = input;
 
     // TODO: size this?
-    let group_records: Vec<GroupRecord> = Vec::new();
+    let mut group_records: Vec<GroupRecord> = Vec::new();
     while !input1.is_empty() {
         group_records.push({
             let (_, next_type) = peek(take(GROUP_TYPE.len()))(input1)?;
             if next_type == GROUP_TYPE {
-                let (input2, group) = group(input1, game_id, skip_group_records)?;
+                let (input2, group) = group(input1, skip_group_records)?;
                 input1 = input2;
                 GroupRecord::Group(group)
             } else {
-                // TODO: fix strange error conversion issue
-                let (input2, record) = Record::parse(input1, game_id, false)?;
+                let (input2, record) = Record::parse(input1, GameId::SkyrimSE, false)?;
                 input1 = input2;
                 GroupRecord::Record(record)
             }
@@ -91,13 +109,17 @@ fn record_type(input: &[u8]) -> IResult<&[u8], RecordType> {
     })(input)
 }
 
-
 fn group_header(input: &[u8]) -> IResult<&[u8], GroupHeader> {
     map(
-        tuple((tag(GROUP_TYPE), le_u32, record_type, take(GROUP_HEADER_LENGTH_TO_SKIP))),
+        tuple((
+            tag(GROUP_TYPE),
+            le_u32,
+            record_type,
+            take(GROUP_HEADER_LENGTH_TO_SKIP),
+        )),
         |(_, group_size, group_label, _)| GroupHeader {
             size_of_group_records: group_size - u32::from(GROUP_HEADER_LENGTH),
-            label: group_label
-        }
+            label: group_label,
+        },
     )(input)
 }

@@ -1,15 +1,15 @@
 [package]
+edition = "2021"
 name = "skyrim-alchemy-rs"
 version = "0.1.0"
-edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 anyhow = "1.0.41"
+esplugin = {git = "https://github.com/mickdekkers/esplugin", branch = "custom-tweaks"}
 lazy_static = "1.4.0"
-skyrim_savegame = { git = "https://github.com/Jupp56/skyrim_savegame", rev = "1f3aa96c8e0dfc22a6ebaf53261395854988e8a5" }
-libloadorder = { git = "https://github.com/Ortham/libloadorder", rev = "d35d61290e2df1fcc9b19be8e453d2cb7bb3ce38" }
-# esplugin = { git = "https://github.com/Ortham/esplugin", rev = "5f38fcae814f748e33719378ebed562016ccb659" }
-esplugin = { git = "https://github.com/mickdekkers/esplugin", branch = "custom-tweaks" }
+libloadorder = {git = "https://github.com/Ortham/libloadorder", rev = "d35d61290e2df1fcc9b19be8e453d2cb7bb3ce38"}
+memmap = "0.7.0"
 nom = "7.0.0"
+skyrim_savegame = {git = "https://github.com/Jupp56/skyrim_savegame", rev = "1f3aa96c8e0dfc22a6ebaf53261395854988e8a5"}
