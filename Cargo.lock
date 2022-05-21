@@ -241,7 +241,7 @@ dependencies = [
 [[package]]
 name = "esplugin"
 version = "3.5.1"
-source = "git+https://github.com/mickdekkers/esplugin?branch=custom-tweaks#8b7c8ca70d26c32e21f0bc5a238277cafff9a8d8"
+source = "git+https://github.com/mickdekkers/esplugin?branch=custom-tweaks#59beabf871656eba01945945a8e5772d18cdec0e"
 dependencies = [
  "encoding_rs",
  "nom",

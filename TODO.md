@@ -7,3 +7,4 @@
 - [ ] match player inventory to known ingredient items
 - [ ] look at https://github.com/cguebert/SkyrimAlchemyHelper for potion recommendation algorithm
 - [ ] OPTIONAL: somehow read from game save which ingredient effects are already known by player (and which are not), then limit data to that
+- [ ] OPTIONAL: look at (relevant) container inventory contents too, in addition to player inventory

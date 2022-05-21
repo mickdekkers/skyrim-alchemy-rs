@@ -1,20 +1,20 @@
 // TODO: should return easily mergeable/updatable struct of all ingredients and magic effects. See https://github.com/cguebert/SkyrimAlchemyHelper/tree/master/libs/modParser
 // See https://en.uesp.net/wiki/Skyrim_Mod:Mod_File_Format
 
+use std::num::NonZeroU32;
+
 use encoding_rs::WINDOWS_1252;
 use esplugin::record::Record;
 use nom::IResult;
 
-mod group;
+use crate::plugin_parser::{
+    ingredient::Ingredient,
+    utils::{parse_lstring, parse_string, parse_zstring},
+};
 
-fn record_type_to_string(data: &[u8; 4]) -> String {
-    WINDOWS_1252
-        .decode_without_bom_handling_and_without_replacement(data)
-        .map(|s| Some(s.to_string()))
-        // FIXME: may panic
-        .unwrap()
-        .unwrap()
-}
+mod group;
+mod ingredient;
+mod utils;
 
 fn le_slice_to_u32(input: &[u8]) -> u32 {
     let int_bytes = &input[..std::mem::size_of::<u32>()];
@@ -25,11 +25,11 @@ fn le_slice_to_u32(input: &[u8]) -> u32 {
     )
 }
 
-fn _parse_plugin<'a>(input: &'a [u8]) -> IResult<&[u8], ()> {
+fn _parse_plugin<'a>(input: &'a [u8], plugin_name: &'a str) -> IResult<&'a [u8], ()> {
     let (remaining_input, header_record) =
         Record::parse(&input, esplugin::GameId::SkyrimSE, false)?;
 
-    println!("header_record: {:#?}", header_record);
+    // println!("header_record: {:#?}", header_record);
 
     const COUNT_OFFSET: usize = 4;
     let record_and_group_count = header_record
@@ -37,6 +37,37 @@ fn _parse_plugin<'a>(input: &'a [u8]) -> IResult<&[u8], ()> {
         .iter()
         .find(|s| s.subrecord_type() == b"HEDR" && s.data().len() > COUNT_OFFSET)
         .map(|s| le_slice_to_u32(&s.data()[COUNT_OFFSET..]));
+
+    let masters: Vec<String> = header_record
+        .subrecords()
+        .iter()
+        .filter_map(|s| match s.subrecord_type() == b"MAST" {
+            true => Some(parse_zstring(s.data())),
+            false => None,
+        })
+        .collect();
+
+    let is_localized = (header_record.header().flags() & 0x80) != 0;
+
+    println!("is_localized: {:?}", is_localized);
+    println!("plugin name: {:?}", plugin_name);
+    println!("masters: {:#?}", masters);
+
+    let get_master = |form_id: NonZeroU32| -> Option<&str> {
+        // See https://en.uesp.net/wiki/Skyrim:Form_ID
+        let mod_id = (u32::from(form_id) >> 24) as usize;
+        let num_masters = masters.len();
+        if mod_id == num_masters {
+            Some(plugin_name)
+        } else if mod_id < num_masters {
+            Some(&masters[mod_id])
+        } else {
+            // TODO: add logging
+            None
+        }
+    };
+
+    let parse_lstring = |data: &[u8]| -> String { parse_lstring(data, is_localized) };
 
     println!("record_and_group_count: {:#?}", record_and_group_count);
     // let (input2, record_ids) = parse_record_ids(input1, game_id, &header_record, filename)?;
@@ -57,8 +88,51 @@ fn _parse_plugin<'a>(input: &'a [u8]) -> IResult<&[u8], ()> {
         input1 = input2;
     }
 
-    println!("interesting_groups: {:#?}", interesting_groups);
+    // println!("interesting_groups: {:#?}", interesting_groups);
     println!("interesting_groups length: {:#?}", interesting_groups.len());
+
+    interesting_groups.iter().for_each(|ig| {
+        let label = parse_string(&ig.header.label);
+        let num_records = ig.group_records.len();
+        println!("Group {:?} has {:?} records.", label, num_records);
+    });
+
+    // Note: we are assuming there is at most one group per group type in each plugin
+    let ingredient_group = interesting_groups
+        .iter()
+        .find(|ig| &ig.header.label == b"INGR");
+
+    if let Some(ig) = ingredient_group {
+        let ingredients: Result<Vec<_>, _> = ig
+            .group_records
+            .iter()
+            .filter_map(|rec| {
+                match rec {
+                    group::GroupRecord::Group(_) => {
+                        // TODO: add logging
+                        // Unexpected subgroup, AFAICT ingredient groups don't have subgroups
+                        None
+                    }
+                    group::GroupRecord::Record(rec) => {
+                        if &rec.header_type() != b"INGR" {
+                            // TODO: add logging
+                            // Unexpected non-ingredient record
+                            None
+                        } else {
+                            Some(rec)
+                        }
+                    }
+                }
+            })
+            .map(|rec| Ingredient::parse(rec, get_master, parse_lstring))
+            .collect();
+
+        println!("Ingredients: {:#?}", ingredients);
+    }
+
+    let magic_effects_group = interesting_groups
+        .iter()
+        .find(|ig| &ig.header.label == b"MGEF");
 
     // TODO: convert to more useful representation
 
@@ -77,8 +151,8 @@ fn _parse_plugin<'a>(input: &'a [u8]) -> IResult<&[u8], ()> {
     Ok((remaining_input, ()))
 }
 
-pub fn parse_plugin<'a>(input: &'a [u8]) -> Result<(), anyhow::Error> {
-    Ok(_parse_plugin(input)
+pub fn parse_plugin<'a>(input: &'a [u8], plugin_name: &str) -> Result<(), anyhow::Error> {
+    Ok(_parse_plugin(input, plugin_name)
         .map_err(|err| anyhow::anyhow!(err.to_string()))?
         .1)
 }

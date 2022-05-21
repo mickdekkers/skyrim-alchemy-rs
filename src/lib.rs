@@ -36,7 +36,10 @@ fn gimme_save_file() -> Result<skyrim_savegame::SaveFile, anyhow::Error> {
 }
 
 fn gimme_plugin_test(load_order: &Vec<String>) -> Result<(), anyhow::Error> {
-    let test_plugin = load_order.first().ok_or(anyhow!("Load order empty!"))?;
+    let test_plugin = load_order
+        .iter()
+        .nth(9)
+        .ok_or(anyhow!("Load order empty!"))?;
     let plugin_path = GAME_PLUGINS_PATH.join(test_plugin);
     // let mut plugin = esplugin::Plugin::new(esplugin::GameId::SkyrimSE, &plugin_path);
     // // Load plugin data
@@ -50,7 +53,7 @@ fn gimme_plugin_test(load_order: &Vec<String>) -> Result<(), anyhow::Error> {
     let plugin_file = File::open(&plugin_path)?;
     // TODO: implement better (safer, streaming) file loading
     let plugin_mmap = unsafe { memmap::MmapOptions::new().map(&plugin_file)? };
-    plugin_parser::parse_plugin(&plugin_mmap)?;
+    plugin_parser::parse_plugin(&plugin_mmap, test_plugin)?;
     Ok(())
 }
 
