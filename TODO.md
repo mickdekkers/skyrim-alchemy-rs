@@ -1,0 +1,9 @@
+- [x] parse savegame (thanks @Jupp56!)
+- [ ] extract player inventory from savegame
+- [x] get game plugin load order
+- [ ] read all loaded game plugins (.esp, .esm, .esl) in mod load order
+- [ ] extract ingredient items from loaded game plugins
+- [ ] cache ingredient items and their effects to disk (invalidate if load order changes, game plugins are added/removed/modified)
+- [ ] match player inventory to known ingredient items
+- [ ] look at https://github.com/cguebert/SkyrimAlchemyHelper for potion recommendation algorithm
+- [ ] OPTIONAL: somehow read from game save which ingredient effects are already known by player (and which are not), then limit data to that
