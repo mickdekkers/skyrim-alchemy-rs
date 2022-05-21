@@ -22,7 +22,7 @@ use crate::plugin_parser::utils::{le_slice_to_u32, parse_zstring};
 pub struct Ingredient<'a> {
     pub id: u32,
     pub editor_id: String,
-    pub mod_name: Option<&'a str>,
+    pub mod_name: &'a str,
     pub name: Option<String>,
     pub effects: Vec<IngredientEffect>,
 }
@@ -65,7 +65,8 @@ where
         .ok_or_else(|| anyhow!("Ingredient record has no form ID"))?;
 
     // See https://en.uesp.net/wiki/Skyrim:Form_ID
-    let mod_name = get_master(id);
+    let mod_name = get_master(id)
+        .ok_or_else(|| anyhow!("Ingredient record has invalid master reference in form ID"))?;
     // The first remaining six hex digits are the ID of the record itself
     let id = u32::from(id) & 0x00FFFFFF;
 
