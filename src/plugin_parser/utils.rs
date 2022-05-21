@@ -28,3 +28,12 @@ pub fn parse_lstring(data: &[u8], is_localized: bool) -> String {
     // See https://en.uesp.net/wiki/Skyrim_Mod:File_Format_Conventions#Data_Types
     parse_zstring(data)
 }
+
+pub fn le_slice_to_u32(input: &[u8]) -> u32 {
+    let int_bytes = &input[..std::mem::size_of::<u32>()];
+    u32::from_le_bytes(
+        int_bytes
+            .try_into()
+            .expect("slice to contain enough bytes to read a u32"),
+    )
+}

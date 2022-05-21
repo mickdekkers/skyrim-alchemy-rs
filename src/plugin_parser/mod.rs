@@ -9,21 +9,12 @@ use nom::IResult;
 
 use crate::plugin_parser::{
     ingredient::Ingredient,
-    utils::{parse_lstring, parse_string, parse_zstring},
+    utils::{le_slice_to_u32, parse_lstring, parse_string, parse_zstring},
 };
 
 mod group;
 mod ingredient;
 mod utils;
-
-fn le_slice_to_u32(input: &[u8]) -> u32 {
-    let int_bytes = &input[..std::mem::size_of::<u32>()];
-    u32::from_le_bytes(
-        int_bytes
-            .try_into()
-            .expect("slice to contain enough bytes to read a u32"),
-    )
-}
 
 fn _parse_plugin<'a>(input: &'a [u8], plugin_name: &'a str) -> IResult<&'a [u8], ()> {
     let (remaining_input, header_record) =
