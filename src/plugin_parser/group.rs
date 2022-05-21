@@ -1,5 +1,6 @@
 use std::io::{BufRead, Seek};
 
+use encoding_rs::WINDOWS_1252;
 use nom::bytes::complete::{tag, take};
 use nom::combinator::{all_consuming, map, peek};
 use nom::multi::length_data;
@@ -25,8 +26,8 @@ pub type RecordType = [u8; 4];
 
 #[derive(Clone, PartialEq, Eq, Debug, Hash, Default)]
 pub struct GroupHeader {
-    size_of_group_records: u32,
-    label: RecordType,
+    pub size_of_group_records: u32,
+    pub label: RecordType,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Hash)]
@@ -37,8 +38,8 @@ pub enum GroupRecord {
 
 #[derive(Clone, PartialEq, Eq, Debug, Hash, Default)]
 pub struct Group {
-    header: GroupHeader,
-    group_records: Vec<GroupRecord>,
+    pub header: GroupHeader,
+    pub group_records: Vec<GroupRecord>,
 }
 
 impl Group {
@@ -56,12 +57,7 @@ fn group(input: &[u8], skip_group_records: fn(RecordType) -> bool) -> IResult<&[
         take(header.size_of_group_records)(remaining_input)?;
 
     let group_records: Vec<GroupRecord> = if !skip_group_records(header.label) {
-        parse_group_records(
-            group_records_data,
-            header.size_of_group_records,
-            skip_group_records,
-        )?
-        .1
+        parse_group_records(group_records_data, skip_group_records)?.1
     } else {
         Vec::new()
     };
@@ -77,7 +73,6 @@ fn group(input: &[u8], skip_group_records: fn(RecordType) -> bool) -> IResult<&[
 
 fn parse_group_records(
     input: &[u8],
-    size_of_group_records: u32,
     skip_group_records: fn(RecordType) -> bool,
 ) -> IResult<&[u8], Vec<GroupRecord>> {
     let mut input1 = input;

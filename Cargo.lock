@@ -517,6 +517,7 @@ name = "skyrim-alchemy-rs"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "encoding_rs",
  "esplugin 3.5.1 (git+https://github.com/mickdekkers/esplugin?branch=custom-tweaks)",
  "lazy_static",
  "libloadorder",
