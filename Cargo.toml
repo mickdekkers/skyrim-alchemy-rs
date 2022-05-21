@@ -12,4 +12,4 @@ skyrim_savegame = { git = "https://github.com/Jupp56/skyrim_savegame", rev = "1f
 libloadorder = { git = "https://github.com/Ortham/libloadorder", rev = "d35d61290e2df1fcc9b19be8e453d2cb7bb3ce38" }
 # esplugin = { git = "https://github.com/Ortham/esplugin", rev = "5f38fcae814f748e33719378ebed562016ccb659" }
 esplugin = { git = "https://github.com/mickdekkers/esplugin", branch = "custom-tweaks" }
-nom = "6.2.1"
+nom = "7.0.0"
