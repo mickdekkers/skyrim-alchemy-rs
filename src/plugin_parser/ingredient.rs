@@ -19,10 +19,10 @@ use esplugin::GameId;
 use crate::plugin_parser::utils::{le_slice_to_u32, parse_zstring};
 
 #[derive(Clone, PartialEq, Debug, Default)]
-pub struct Ingredient<'a> {
+pub struct Ingredient {
     pub id: u32,
     pub editor_id: String,
-    pub mod_name: &'a str,
+    pub mod_name: String,
     pub name: Option<String>,
     pub effects: Vec<IngredientEffect>,
 }
@@ -34,14 +34,14 @@ pub struct IngredientEffect {
     pub magnitude: f32,
 }
 
-impl<'a> Ingredient<'a> {
+impl Ingredient {
     pub fn parse<FnGetMaster, FnParseLstring>(
         record: &Record,
         get_master: FnGetMaster,
         parse_lstring: FnParseLstring,
-    ) -> Result<Ingredient<'a>, anyhow::Error>
+    ) -> Result<Ingredient, anyhow::Error>
     where
-        FnGetMaster: Fn(NonZeroU32) -> Option<&'a str>,
+        FnGetMaster: Fn(NonZeroU32) -> Option<String>,
         FnParseLstring: Fn(&[u8]) -> String,
     {
         ingredient(record, get_master, parse_lstring)
@@ -52,9 +52,9 @@ fn ingredient<'a, FnGetMaster, FnParseLstring>(
     record: &Record,
     get_master: FnGetMaster,
     parse_lstring: FnParseLstring,
-) -> Result<Ingredient<'a>, anyhow::Error>
+) -> Result<Ingredient, anyhow::Error>
 where
-    FnGetMaster: Fn(NonZeroU32) -> Option<&'a str>,
+    FnGetMaster: Fn(NonZeroU32) -> Option<String>,
     FnParseLstring: Fn(&[u8]) -> String,
 {
     assert!(&record.header_type() == b"INGR");

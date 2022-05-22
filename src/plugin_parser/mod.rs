@@ -20,7 +20,10 @@ mod ingredient;
 mod magic_effect;
 mod utils;
 
-pub fn parse_plugin<'a>(input: &'a [u8], plugin_name: &str) -> Result<(), anyhow::Error> {
+pub fn parse_plugin<'a>(
+    input: &'a [u8],
+    plugin_name: &str,
+) -> Result<(Vec<Ingredient>, Vec<MagicEffect>), anyhow::Error> {
     let (remaining_input, header_record) =
         Record::parse(&input, esplugin::GameId::SkyrimSE, false).map_err(nom_err_to_anyhow_err)?;
 
@@ -44,18 +47,18 @@ pub fn parse_plugin<'a>(input: &'a [u8], plugin_name: &str) -> Result<(), anyhow
 
     let is_localized = (header_record.header().flags() & 0x80) != 0;
 
-    println!("is_localized: {:?}", is_localized);
     println!("plugin name: {:?}", plugin_name);
+    println!("is_localized: {:?}", is_localized);
     println!("masters: {:#?}", masters);
 
-    let get_master = |form_id: NonZeroU32| -> Option<&str> {
+    let get_master = |form_id: NonZeroU32| -> Option<String> {
         // See https://en.uesp.net/wiki/Skyrim:Form_ID
         let mod_id = (u32::from(form_id) >> 24) as usize;
         let num_masters = masters.len();
         if mod_id == num_masters {
-            Some(plugin_name)
+            Some(String::from(plugin_name))
         } else if mod_id < num_masters {
-            Some(&masters[mod_id])
+            Some(masters[mod_id].clone())
         } else {
             // TODO: add logging
             None
@@ -182,5 +185,5 @@ pub fn parse_plugin<'a>(input: &'a [u8], plugin_name: &str) -> Result<(), anyhow
     //         record_ids,
     //     },
     // ))
-    Ok(())
+    Ok((ingredients, magic_effects))
 }
