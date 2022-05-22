@@ -80,8 +80,12 @@ where
         .subrecords()
         .iter()
         .find(|s| s.subrecord_type() == b"DNAM")
-        .ok_or_else(|| anyhow!("Record is missing description"))
-        .map(|s| parse_lstring(s.data()))?;
+        .or_else(|| {
+            println!("Record is missing description");
+            None
+        })
+        .map(|s| parse_lstring(s.data()))
+        .unwrap_or_else(|| String::from(""));
 
     let (flags, base_cost) = {
         // TODO: get rid of double ??

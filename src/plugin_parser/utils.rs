@@ -48,10 +48,7 @@ pub fn parse_lstring(
             .expect("missing strings table for localized plugin");
 
         let id = le_slice_to_u32(data);
-        return strings_table
-            .get(id)
-            .or_else(|| Some(String::from("<MISSING_STRING>")))
-            .unwrap();
+        return strings_table.get(id).unwrap_or_else(|| String::from(""));
     }
 
     // All lstrings are zstrings when not localized
