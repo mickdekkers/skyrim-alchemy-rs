@@ -16,13 +16,13 @@ use esplugin::record::Record;
 use esplugin::record_id::RecordId;
 use esplugin::GameId;
 
-use crate::plugin_parser::utils::{le_slice_to_u32, parse_zstring};
+use crate::plugin_parser::utils::{le_slice_to_u32, parse_zstring, split_form_id};
 
 #[derive(Clone, PartialEq, Debug, Default)]
 pub struct MagicEffect {
+    pub mod_name: String,
     pub id: u32,
     pub editor_id: String,
-    // pub mod_name: &'a str,
     pub name: Option<String>,
     pub description: String,
     pub flags: u32,
@@ -30,24 +30,28 @@ pub struct MagicEffect {
 }
 
 impl MagicEffect {
-    pub fn parse<FnParseLstring>(
+    pub fn parse<FnGetMaster, FnParseLstring>(
         record: &Record,
+        get_master: FnGetMaster,
         parse_lstring: FnParseLstring,
     ) -> Result<MagicEffect, anyhow::Error>
     where
+        FnGetMaster: Fn(NonZeroU32) -> Option<String>,
         FnParseLstring: Fn(&[u8]) -> String,
     {
-        magic_effect(record, parse_lstring)
+        magic_effect(record, get_master, parse_lstring)
     }
 }
 
 // TODO: only parse magic effects which are actually used by ingredients?
 
-fn magic_effect<FnParseLstring>(
+fn magic_effect<FnGetMaster, FnParseLstring>(
     record: &Record,
+    get_master: FnGetMaster,
     parse_lstring: FnParseLstring,
 ) -> Result<MagicEffect, anyhow::Error>
 where
+    FnGetMaster: Fn(NonZeroU32) -> Option<String>,
     FnParseLstring: Fn(&[u8]) -> String,
 {
     assert!(&record.header_type() == b"MGEF");
@@ -57,11 +61,7 @@ where
         .form_id()
         .ok_or_else(|| anyhow!("Magic effect record has no form ID"))?;
 
-    // // See https://en.uesp.net/wiki/Skyrim:Form_ID
-    // let mod_name = get_master(id)
-    //     .ok_or_else(|| anyhow!("Magic effect record has invalid master reference in form ID"))?;
-    // The first remaining six hex digits are the ID of the record itself
-    // let id = u32::from(id) & 0x00FFFFFF;
+    let (mod_name, id) = split_form_id(id, &get_master)?;
 
     let editor_id = record
         .subrecords()
@@ -100,9 +100,9 @@ where
     };
 
     Ok(MagicEffect {
+        mod_name,
         id: u32::from(id),
         editor_id,
-        // mod_name,
         name: full_name,
         base_cost,
         description,

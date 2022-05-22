@@ -16,19 +16,20 @@ use esplugin::record::Record;
 use esplugin::record_id::RecordId;
 use esplugin::GameId;
 
-use crate::plugin_parser::utils::{le_slice_to_u32, parse_zstring};
+use crate::plugin_parser::utils::{le_slice_to_u32, parse_zstring, split_form_id};
 
 #[derive(Clone, PartialEq, Debug, Default)]
 pub struct Ingredient {
+    pub mod_name: String,
     pub id: u32,
     pub editor_id: String,
-    pub mod_name: String,
     pub name: Option<String>,
     pub effects: Vec<IngredientEffect>,
 }
 
 #[derive(Clone, PartialEq, Debug, Default)]
 pub struct IngredientEffect {
+    pub mod_name: String,
     pub id: u32,
     pub duration: u32,
     pub magnitude: f32,
@@ -64,11 +65,7 @@ where
         .form_id()
         .ok_or_else(|| anyhow!("Ingredient record has no form ID"))?;
 
-    // See https://en.uesp.net/wiki/Skyrim:Form_ID
-    let mod_name = get_master(id)
-        .ok_or_else(|| anyhow!("Ingredient record has invalid master reference in form ID"))?;
-    // The first remaining six hex digits are the ID of the record itself
-    let id = u32::from(id) & 0x00FFFFFF;
+    let (mod_name, id) = split_form_id(id, &get_master)?;
 
     let editor_id = record
         .subrecords()
@@ -103,7 +100,11 @@ where
                             anyhow!("error parsing ingredient effects: {}", err.to_string())
                         })?
                         .1;
+
+                    let (mod_name, efid) =
+                        split_form_id(std::num::NonZeroU32::new(efid).unwrap(), &get_master)?;
                     effects.push(IngredientEffect {
+                        mod_name,
                         id: efid,
                         duration,
                         magnitude,
@@ -120,9 +121,9 @@ where
     // TODO: when merging ingredients lists from multiple plugins, do this https://github.com/cguebert/SkyrimAlchemyHelper/blob/7904e2bcfe5d6561652928bd815213a1e0ba95e8/libs/modParser/ConfigParser.cpp#L118
 
     Ok(Ingredient {
+        mod_name,
         id,
         editor_id,
-        mod_name,
         name: full_name,
         effects,
     })

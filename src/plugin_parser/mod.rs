@@ -183,7 +183,7 @@ pub fn parse_plugin<'a>(
                         }
                     }
                 })
-                .map(|rec| MagicEffect::parse(rec, parse_lstring))
+                .map(|rec| MagicEffect::parse(rec, get_master, parse_lstring))
                 .partition_map(|r| match r {
                     Ok(v) => Either::Left(v),
                     Err(v) => Either::Right(v),
@@ -196,7 +196,7 @@ pub fn parse_plugin<'a>(
                     errors
                 );
             }
-            // println!("Magic effects: {:#?}", magic_effects);
+            println!("Magic effects: {:#?}", magic_effects);
             magic_effects
         } else {
             Vec::new()
