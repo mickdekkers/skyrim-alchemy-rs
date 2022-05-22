@@ -1,4 +1,7 @@
 use encoding_rs::WINDOWS_1252;
+use nom::FindSubstring;
+
+use super::strings_table::StringsTable;
 
 pub fn parse_string(data: &[u8]) -> String {
     WINDOWS_1252
@@ -14,17 +17,38 @@ pub fn parse_zstring(data: &[u8]) -> String {
     if len < 2 {
         String::from("")
     } else {
+        // zstrings are null terminated strings
         // See https://en.uesp.net/wiki/Skyrim_Mod:File_Format_Conventions#Data_Types
-        // zstrings are null terminated, so we exclude the null
-        parse_string(&data[..len - 1])
+
+        // TODO: can probably avoid iterating over the string data twice
+        let null_index = data
+            .iter()
+            .enumerate()
+            .find_map(|(index, byte)| match byte == &b'\0' {
+                true => Some(index),
+                false => None,
+            })
+            .expect("expected null terminated string to contain null")
+            .clone();
+        parse_string(&data[..null_index])
     }
 }
 
-pub fn parse_lstring(data: &[u8], is_localized: bool) -> String {
-    // FIXME: impl strings table lookups
-    // assert_eq!(is_localized, false);
+pub fn parse_lstring(
+    data: &[u8],
+    is_localized: bool,
+    strings_table: &Option<StringsTable>,
+) -> String {
     if is_localized {
-        return "TEMP_LOCALIZED".into();
+        let strings_table = strings_table
+            .as_ref()
+            .expect("missing strings table for localized plugin");
+
+        let id = le_slice_to_u32(data);
+        return strings_table
+            .get(id)
+            .or_else(|| Some(String::from("<MISSING_STRING>")))
+            .unwrap();
     }
 
     // All lstrings are zstrings when not localized

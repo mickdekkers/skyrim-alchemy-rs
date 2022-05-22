@@ -11,7 +11,7 @@ use nom::IResult;
 use crate::plugin_parser::{
     ingredient::Ingredient,
     magic_effect::MagicEffect,
-    strings_table::find_strings_file,
+    strings_table::StringsTable,
     utils::{le_slice_to_u32, parse_lstring, parse_string, parse_zstring},
 };
 
@@ -55,13 +55,10 @@ pub fn parse_plugin<'a>(
     // println!("masters: {:#?}", masters);
     println!("is_localized: {:?}", is_localized);
 
-    // assert_eq!(is_localized, false);
-    if is_localized {
-        let strings_location = find_strings_file(plugin_name, game_plugins_path);
-
-        println!("strings location: {:#?}", strings_location);
-        assert!(strings_location.is_some());
-    }
+    let strings_table = match is_localized {
+        true => StringsTable::new(plugin_name, game_plugins_path),
+        false => None,
+    };
 
     let get_master = |form_id: NonZeroU32| -> Option<String> {
         // See https://en.uesp.net/wiki/Skyrim:Form_ID
@@ -77,7 +74,8 @@ pub fn parse_plugin<'a>(
         }
     };
 
-    let parse_lstring = |data: &[u8]| -> String { parse_lstring(data, is_localized) };
+    let parse_lstring =
+        |data: &[u8]| -> String { parse_lstring(data, is_localized, &strings_table) };
 
     // println!("record_and_group_count: {:#?}", record_and_group_count);
     // let (input2, record_ids) = parse_record_ids(input1, game_id, &header_record, filename)?;
@@ -151,7 +149,7 @@ pub fn parse_plugin<'a>(
                     errors
                 );
             }
-            // println!("Ingredients: {:#?}", ingredients);
+            println!("Ingredients: {:#?}", ingredients);
             ingredients
         } else {
             Vec::new()
