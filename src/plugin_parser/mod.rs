@@ -9,16 +9,20 @@ use nom::IResult;
 
 use crate::plugin_parser::{
     ingredient::Ingredient,
+    magic_effect::MagicEffect,
     utils::{le_slice_to_u32, parse_lstring, parse_string, parse_zstring},
 };
 
+use self::utils::nom_err_to_anyhow_err;
+
 mod group;
 mod ingredient;
+mod magic_effect;
 mod utils;
 
-fn _parse_plugin<'a>(input: &'a [u8], plugin_name: &'a str) -> IResult<&'a [u8], ()> {
+pub fn parse_plugin<'a>(input: &'a [u8], plugin_name: &str) -> Result<(), anyhow::Error> {
     let (remaining_input, header_record) =
-        Record::parse(&input, esplugin::GameId::SkyrimSE, false)?;
+        Record::parse(&input, esplugin::GameId::SkyrimSE, false).map_err(nom_err_to_anyhow_err)?;
 
     // println!("header_record: {:#?}", header_record);
 
@@ -72,7 +76,8 @@ fn _parse_plugin<'a>(input: &'a [u8], plugin_name: &'a str) -> IResult<&'a [u8],
     let mut interesting_groups = Vec::new();
     let mut input1 = remaining_input;
     while !input1.is_empty() {
-        let (input2, group) = group::Group::parse(input1, skip_group_records)?;
+        let (input2, group) =
+            group::Group::parse(input1, skip_group_records).map_err(nom_err_to_anyhow_err)?;
         if group.group_records.len() > 0 {
             interesting_groups.push(group);
         }
@@ -93,37 +98,75 @@ fn _parse_plugin<'a>(input: &'a [u8], plugin_name: &'a str) -> IResult<&'a [u8],
         .iter()
         .find(|ig| &ig.header.label == b"INGR");
 
-    if let Some(ig) = ingredient_group {
-        let ingredients: Result<Vec<_>, _> = ig
-            .group_records
-            .iter()
-            .filter_map(|rec| {
-                match rec {
-                    group::GroupRecord::Group(_) => {
-                        // TODO: add logging
-                        // Unexpected subgroup, AFAICT ingredient groups don't have subgroups
-                        None
-                    }
-                    group::GroupRecord::Record(rec) => {
-                        if &rec.header_type() != b"INGR" {
+    let ingredients = {
+        if let Some(ig) = ingredient_group {
+            let ingredients: Result<Vec<_>, _> = ig
+                .group_records
+                .iter()
+                .filter_map(|rec| {
+                    match rec {
+                        group::GroupRecord::Group(_) => {
                             // TODO: add logging
-                            // Unexpected non-ingredient record
+                            // Unexpected subgroup, AFAICT ingredient groups don't have subgroups
                             None
-                        } else {
-                            Some(rec)
+                        }
+                        group::GroupRecord::Record(rec) => {
+                            if &rec.header_type() != b"INGR" {
+                                // TODO: add logging
+                                // Unexpected non-ingredient record
+                                None
+                            } else {
+                                Some(rec)
+                            }
                         }
                     }
-                }
-            })
-            .map(|rec| Ingredient::parse(rec, get_master, parse_lstring))
-            .collect();
+                })
+                .map(|rec| Ingredient::parse(rec, get_master, parse_lstring))
+                .collect();
 
-        println!("Ingredients: {:#?}", ingredients);
-    }
+            println!("Ingredients: {:#?}", ingredients);
+            ingredients?
+        } else {
+            Vec::new()
+        }
+    };
 
     let magic_effects_group = interesting_groups
         .iter()
         .find(|ig| &ig.header.label == b"MGEF");
+
+    let magic_effects = {
+        if let Some(ig) = magic_effects_group {
+            let magic_effects: Result<Vec<_>, _> = ig
+                .group_records
+                .iter()
+                .filter_map(|rec| {
+                    match rec {
+                        group::GroupRecord::Group(_) => {
+                            // TODO: add logging
+                            // Unexpected subgroup, AFAICT magic effect groups don't have subgroups
+                            None
+                        }
+                        group::GroupRecord::Record(rec) => {
+                            if &rec.header_type() != b"MGEF" {
+                                // TODO: add logging
+                                // Unexpected non-magic effect record
+                                None
+                            } else {
+                                Some(rec)
+                            }
+                        }
+                    }
+                })
+                .map(|rec| MagicEffect::parse(rec, parse_lstring))
+                .collect();
+
+            println!("Magic effects: {:#?}", magic_effects);
+            magic_effects?
+        } else {
+            Vec::new()
+        }
+    };
 
     // TODO: convert to more useful representation
 
@@ -139,11 +182,5 @@ fn _parse_plugin<'a>(input: &'a [u8], plugin_name: &'a str) -> IResult<&'a [u8],
     //         record_ids,
     //     },
     // ))
-    Ok((remaining_input, ()))
-}
-
-pub fn parse_plugin<'a>(input: &'a [u8], plugin_name: &str) -> Result<(), anyhow::Error> {
-    Ok(_parse_plugin(input, plugin_name)
-        .map_err(|err| anyhow::anyhow!(err.to_string()))?
-        .1)
+    Ok(())
 }

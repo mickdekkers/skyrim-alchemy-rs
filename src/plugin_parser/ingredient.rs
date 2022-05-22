@@ -83,6 +83,7 @@ where
         .find(|s| s.subrecord_type() == b"FULL")
         .map(|s| parse_lstring(s.data()));
 
+    // TODO: cap to 4
     let mut effects = Vec::new();
     let mut current_effect_id = None;
     for sr in record

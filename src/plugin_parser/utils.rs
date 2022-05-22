@@ -37,3 +37,10 @@ pub fn le_slice_to_u32(input: &[u8]) -> u32 {
             .expect("slice to contain enough bytes to read a u32"),
     )
 }
+
+pub fn nom_err_to_anyhow_err<E>(err: nom::Err<E>) -> anyhow::Error
+where
+    E: std::fmt::Debug,
+{
+    anyhow::anyhow!(err.to_string())
+}
