@@ -1,15 +1,17 @@
 // TODO: should return easily mergeable/updatable struct of all ingredients and magic effects. See https://github.com/cguebert/SkyrimAlchemyHelper/tree/master/libs/modParser
 // See https://en.uesp.net/wiki/Skyrim_Mod:Mod_File_Format
 
-use std::num::NonZeroU32;
+use std::{num::NonZeroU32, path::Path};
 
 use encoding_rs::WINDOWS_1252;
 use esplugin::record::Record;
+use itertools::{Either, Itertools};
 use nom::IResult;
 
 use crate::plugin_parser::{
     ingredient::Ingredient,
     magic_effect::MagicEffect,
+    strings_table::find_strings_file,
     utils::{le_slice_to_u32, parse_lstring, parse_string, parse_zstring},
 };
 
@@ -18,11 +20,13 @@ use self::utils::nom_err_to_anyhow_err;
 mod group;
 mod ingredient;
 mod magic_effect;
+mod strings_table;
 mod utils;
 
 pub fn parse_plugin<'a>(
     input: &'a [u8],
     plugin_name: &str,
+    game_plugins_path: &Path,
 ) -> Result<(Vec<Ingredient>, Vec<MagicEffect>), anyhow::Error> {
     let (remaining_input, header_record) =
         Record::parse(&input, esplugin::GameId::SkyrimSE, false).map_err(nom_err_to_anyhow_err)?;
@@ -48,8 +52,16 @@ pub fn parse_plugin<'a>(
     let is_localized = (header_record.header().flags() & 0x80) != 0;
 
     println!("plugin name: {:?}", plugin_name);
+    // println!("masters: {:#?}", masters);
     println!("is_localized: {:?}", is_localized);
-    println!("masters: {:#?}", masters);
+
+    // assert_eq!(is_localized, false);
+    if is_localized {
+        let strings_location = find_strings_file(plugin_name, game_plugins_path);
+
+        println!("strings location: {:#?}", strings_location);
+        assert!(strings_location.is_some());
+    }
 
     let get_master = |form_id: NonZeroU32| -> Option<String> {
         // See https://en.uesp.net/wiki/Skyrim:Form_ID
@@ -67,7 +79,7 @@ pub fn parse_plugin<'a>(
 
     let parse_lstring = |data: &[u8]| -> String { parse_lstring(data, is_localized) };
 
-    println!("record_and_group_count: {:#?}", record_and_group_count);
+    // println!("record_and_group_count: {:#?}", record_and_group_count);
     // let (input2, record_ids) = parse_record_ids(input1, game_id, &header_record, filename)?;
 
     let skip_group_records = |label| match &label {
@@ -88,12 +100,12 @@ pub fn parse_plugin<'a>(
     }
 
     // println!("interesting_groups: {:#?}", interesting_groups);
-    println!("interesting_groups length: {:#?}", interesting_groups.len());
+    // println!("interesting_groups length: {:#?}", interesting_groups.len());
 
     interesting_groups.iter().for_each(|ig| {
         let label = parse_string(&ig.header.label);
         let num_records = ig.group_records.len();
-        println!("Group {:?} has {:?} records.", label, num_records);
+        // println!("Group {:?} has {:?} records.", label, num_records);
     });
 
     // Note: we are assuming there is at most one group per group type in each plugin
@@ -101,9 +113,11 @@ pub fn parse_plugin<'a>(
         .iter()
         .find(|ig| &ig.header.label == b"INGR");
 
+    // TODO: if all records failed to parse, that's probably a problem
+
     let ingredients = {
         if let Some(ig) = ingredient_group {
-            let ingredients: Result<Vec<_>, _> = ig
+            let (ingredients, errors): (Vec<_>, Vec<_>) = ig
                 .group_records
                 .iter()
                 .filter_map(|rec| {
@@ -125,10 +139,20 @@ pub fn parse_plugin<'a>(
                     }
                 })
                 .map(|rec| Ingredient::parse(rec, get_master, parse_lstring))
-                .collect();
+                .partition_map(|r| match r {
+                    Ok(v) => Either::Left(v),
+                    Err(v) => Either::Right(v),
+                });
 
-            println!("Ingredients: {:#?}", ingredients);
-            ingredients?
+            if errors.len() > 0 {
+                println!(
+                    "Failed to parse {} ingredients records: {:#?}",
+                    errors.len(),
+                    errors
+                );
+            }
+            // println!("Ingredients: {:#?}", ingredients);
+            ingredients
         } else {
             Vec::new()
         }
@@ -140,7 +164,7 @@ pub fn parse_plugin<'a>(
 
     let magic_effects = {
         if let Some(ig) = magic_effects_group {
-            let magic_effects: Result<Vec<_>, _> = ig
+            let (magic_effects, errors): (Vec<_>, Vec<_>) = ig
                 .group_records
                 .iter()
                 .filter_map(|rec| {
@@ -162,10 +186,20 @@ pub fn parse_plugin<'a>(
                     }
                 })
                 .map(|rec| MagicEffect::parse(rec, parse_lstring))
-                .collect();
+                .partition_map(|r| match r {
+                    Ok(v) => Either::Left(v),
+                    Err(v) => Either::Right(v),
+                });
 
-            println!("Magic effects: {:#?}", magic_effects);
-            magic_effects?
+            if errors.len() > 0 {
+                println!(
+                    "Failed to parse {} magic effects records: {:#?}",
+                    errors.len(),
+                    errors
+                );
+            }
+            // println!("Magic effects: {:#?}", magic_effects);
+            magic_effects
         } else {
             Vec::new()
         }

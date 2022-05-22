@@ -22,7 +22,10 @@ pub fn parse_zstring(data: &[u8]) -> String {
 
 pub fn parse_lstring(data: &[u8], is_localized: bool) -> String {
     // FIXME: impl strings table lookups
-    assert_eq!(is_localized, false);
+    // assert_eq!(is_localized, false);
+    if is_localized {
+        return "TEMP_LOCALIZED".into();
+    }
 
     // All lstrings are zstrings when not localized
     // See https://en.uesp.net/wiki/Skyrim_Mod:File_Format_Conventions#Data_Types

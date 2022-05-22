@@ -36,32 +36,43 @@ fn gimme_save_file() -> Result<skyrim_savegame::SaveFile, anyhow::Error> {
 }
 
 fn gimme_plugin_test(load_order: &Vec<String>) -> Result<(), anyhow::Error> {
-    let test_plugin = load_order
-        .iter()
-        .nth(9)
-        .ok_or(anyhow!("Load order empty!"))?;
-    let plugin_path = GAME_PLUGINS_PATH.join(test_plugin);
-    // let mut plugin = esplugin::Plugin::new(esplugin::GameId::SkyrimSE, &plugin_path);
-    // // Load plugin data
-    // plugin.parse_file(true)?;
-    // println!("Plugin:\n{:#?}", plugin);
-    // let description = plugin.description()?;
-    // println!("Plugin description:\n{:#?}", &description);
-    // let header_version = plugin.header_version();
-    // println!("Plugin header version:\n{:#?}", header_version);
+    if load_order.len() < 1 {
+        Err(anyhow!("Load order empty!"))?
+    }
 
-    let plugin_file = File::open(&plugin_path)?;
-    // TODO: implement better (safer, streaming) file loading
-    let plugin_mmap = unsafe { memmap::MmapOptions::new().map(&plugin_file)? };
-    plugin_parser::parse_plugin(&plugin_mmap, test_plugin)?;
+    for plugin_name in load_order.iter() {
+        let plugin_path = GAME_PLUGINS_PATH.join(plugin_name);
+        // let mut plugin = esplugin::Plugin::new(esplugin::GameId::SkyrimSE, &plugin_path);
+        // // Load plugin data
+        // plugin.parse_file(true)?;
+        // println!("Plugin:\n{:#?}", plugin);
+        // let description = plugin.description()?;
+        // println!("Plugin description:\n{:#?}", &description);
+        // let header_version = plugin.header_version();
+        // println!("Plugin header version:\n{:#?}", header_version);
+
+        let plugin_file = File::open(&plugin_path)?;
+        // TODO: implement better (safer, streaming) file loading
+        let plugin_mmap = unsafe { memmap::MmapOptions::new().map(&plugin_file)? };
+        let (ingredients, magic_effects) =
+            plugin_parser::parse_plugin(&plugin_mmap, plugin_name, &GAME_PLUGINS_PATH)?;
+
+        println!(
+            "Plugin {:?} has {:?} ingredients and {:?} magic effects.",
+            plugin_name,
+            ingredients.len(),
+            magic_effects.len()
+        );
+    }
+
     Ok(())
 }
 
 pub fn do_the_thing() -> Result<(), anyhow::Error> {
     let save_file = gimme_save_file()?;
-    println!("{:#?}", save_file);
+    // println!("{:#?}", save_file);
     let load_order = gimme_load_order()?;
-    println!("Load order:\n{:#?}", &load_order);
+    // println!("Load order:\n{:#?}", &load_order);
     gimme_plugin_test(&load_order)?;
     Ok(())
 }
