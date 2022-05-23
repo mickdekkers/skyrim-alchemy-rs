@@ -1,5 +1,6 @@
 use anyhow::anyhow;
 use nom::error::ErrorKind;
+use serde::Serialize;
 use std::io::{BufRead, Seek};
 use std::num::NonZeroU32;
 
@@ -20,7 +21,7 @@ use crate::plugin_parser::utils::{le_slice_to_u32, parse_zstring, split_form_id}
 
 use super::form_id::FormIdContainer;
 
-#[derive(Clone, PartialEq, Debug, Default)]
+#[derive(Clone, PartialEq, Debug, Default, Serialize)]
 pub struct Ingredient {
     pub mod_name: String,
     pub id: u32,
@@ -29,7 +30,7 @@ pub struct Ingredient {
     pub effects: Vec<IngredientEffect>,
 }
 
-#[derive(Clone, PartialEq, Debug, Default)]
+#[derive(Clone, PartialEq, Debug, Default, Serialize)]
 pub struct IngredientEffect {
     pub mod_name: String,
     pub id: u32,

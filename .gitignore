@@ -1,3 +1,4 @@
 /target
 *.ess
 *.skse
+/data/*.json

@@ -1,6 +1,7 @@
 #![feature(hash_drain_filter)]
 
 use anyhow::{anyhow, Context};
+use itertools::Itertools;
 use lazy_static::lazy_static;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
@@ -39,7 +40,15 @@ fn gimme_save_file() -> Result<skyrim_savegame::SaveFile, anyhow::Error> {
     Ok(skyrim_savegame::parse_save_file(file_data))
 }
 
-fn gimme_plugin_test(load_order: &Vec<String>) -> Result<(), anyhow::Error> {
+fn load_ingredients_and_effects_from_plugins(
+    load_order: &Vec<String>,
+) -> Result<
+    (
+        HashMap<(String, u32), Ingredient>,
+        HashMap<(String, u32), MagicEffect>,
+    ),
+    anyhow::Error,
+> {
     if load_order.len() < 1 {
         Err(anyhow!("Load order empty!"))?
     }
@@ -107,7 +116,7 @@ fn gimme_plugin_test(load_order: &Vec<String>) -> Result<(), anyhow::Error> {
     let num_missing_mgefs = ingredient_effect_ids.difference(&mgef_keys).count();
     assert!(num_missing_mgefs == 0);
 
-    Ok(())
+    Ok((ingredients, magic_effects))
 }
 
 pub fn do_the_thing() -> Result<(), anyhow::Error> {
@@ -115,6 +124,15 @@ pub fn do_the_thing() -> Result<(), anyhow::Error> {
     // println!("{:#?}", save_file);
     let load_order = gimme_load_order()?;
     // println!("Load order:\n{:#?}", &load_order);
-    gimme_plugin_test(&load_order)?;
+    let (ingredients, magic_effects) = load_ingredients_and_effects_from_plugins(&load_order)?;
+
+    let serialized_ingredients =
+        serde_json::to_string_pretty(&ingredients.values().collect_vec()).unwrap();
+    let serialized_magic_effects =
+        serde_json::to_string_pretty(&magic_effects.values().collect_vec()).unwrap();
+
+    fs::write("data/ingredients.json", serialized_ingredients)?;
+    fs::write("data/magic_effects.json", serialized_magic_effects)?;
+
     Ok(())
 }
