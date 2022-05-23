@@ -1,8 +1,15 @@
+#![feature(hash_drain_filter)]
+
 use anyhow::{anyhow, Context};
 use lazy_static::lazy_static;
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::{fs, io::BufReader};
+
+use crate::plugin_parser::{
+    form_id::FormIdContainer, ingredient::Ingredient, magic_effect::MagicEffect,
+};
 
 mod plugin_parser;
 
@@ -11,9 +18,6 @@ lazy_static! {
         PathBuf::from(&"H:/SteamLibrary/steamapps/common/Skyrim Special Edition");
     static ref GAME_PLUGINS_PATH: PathBuf = GAME_PATH.join(&"Data");
 }
-
-// const GAME_PATH: &str = ;
-// const GAME_PLUGINS_DIR: &str = Path::join(Path::new())
 
 fn gimme_load_order() -> Result<Vec<String>, anyhow::Error> {
     let game_settings = loadorder::GameSettings::new(loadorder::GameId::SkyrimSE, &GAME_PATH)?;
@@ -40,30 +44,68 @@ fn gimme_plugin_test(load_order: &Vec<String>) -> Result<(), anyhow::Error> {
         Err(anyhow!("Load order empty!"))?
     }
 
+    let mut magic_effects = HashMap::<(String, u32), MagicEffect>::new();
+    let mut ingredients = HashMap::<(String, u32), Ingredient>::new();
+    let mut ingredient_effect_ids = HashSet::<(String, u32)>::new();
+
     for plugin_name in load_order.iter() {
         let plugin_path = GAME_PLUGINS_PATH.join(plugin_name);
-        // let mut plugin = esplugin::Plugin::new(esplugin::GameId::SkyrimSE, &plugin_path);
-        // // Load plugin data
-        // plugin.parse_file(true)?;
-        // println!("Plugin:\n{:#?}", plugin);
-        // let description = plugin.description()?;
-        // println!("Plugin description:\n{:#?}", &description);
-        // let header_version = plugin.header_version();
-        // println!("Plugin header version:\n{:#?}", header_version);
 
         let plugin_file = File::open(&plugin_path)?;
         // TODO: implement better (safer, streaming) file loading
         let plugin_mmap = unsafe { memmap::MmapOptions::new().map(&plugin_file)? };
-        let (ingredients, magic_effects) =
+        let (plugin_ingredients, plugin_magic_effects) =
             plugin_parser::parse_plugin(&plugin_mmap, plugin_name, &GAME_PLUGINS_PATH)?;
 
         println!(
             "Plugin {:?} has {:?} ingredients and {:?} magic effects.",
             plugin_name,
-            ingredients.len(),
-            magic_effects.len()
+            plugin_ingredients.len(),
+            plugin_magic_effects.len()
         );
+
+        for plugin_magic_effect in plugin_magic_effects.into_iter() {
+            // Insert into magic effects hashmap, overwriting existing entry from previous plugins
+            magic_effects.insert(plugin_magic_effect.get_form_id_pair(), plugin_magic_effect);
+        }
+
+        for plugin_ingredient in plugin_ingredients.into_iter() {
+            // Add ingredient effect IDs to set of known used effects
+            for plugin_ingredient_effect_id in plugin_ingredient
+                .effects
+                .iter()
+                .map(|eff| eff.get_form_id_pair())
+            {
+                ingredient_effect_ids.insert(plugin_ingredient_effect_id);
+            }
+
+            // Insert into magic effects hashmap, overwriting existing entry from previous plugins
+            ingredients.insert(plugin_ingredient.get_form_id_pair(), plugin_ingredient);
+        }
     }
+
+    // Remove from the magic effects all those that are not used by ingredients
+
+    println!("Number of ingredients: {}", ingredients.len());
+    println!(
+        "Number of magic effects before filtering: {}",
+        magic_effects.len()
+    );
+    magic_effects.drain_filter(|key, _| !ingredient_effect_ids.contains(key));
+    println!(
+        "Number of magic effects after filtering: {}",
+        magic_effects.len()
+    );
+
+    // TODO: find way to avoid clone here (can't difference `&HashSet<(String, u32)>` and `&HashSet<&(String, u32)>)` because they're different types)
+    let mgef_keys = magic_effects
+        .keys()
+        .map(|k| k.clone())
+        .collect::<HashSet<(String, u32)>>();
+
+    // TODO: if missing mgefs, identify which ingredients
+    let num_missing_mgefs = ingredient_effect_ids.difference(&mgef_keys).count();
+    assert!(num_missing_mgefs == 0);
 
     Ok(())
 }

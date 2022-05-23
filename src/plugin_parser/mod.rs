@@ -17,9 +17,10 @@ use crate::plugin_parser::{
 
 use self::utils::nom_err_to_anyhow_err;
 
+pub(crate) mod form_id;
 mod group;
-mod ingredient;
-mod magic_effect;
+pub(crate) mod ingredient;
+pub(crate) mod magic_effect;
 mod strings_table;
 mod utils;
 
@@ -149,7 +150,7 @@ pub fn parse_plugin<'a>(
                     errors
                 );
             }
-            println!("Ingredients: {:#?}", ingredients);
+            // println!("Ingredients: {:#?}", ingredients);
             ingredients
         } else {
             Vec::new()
@@ -196,7 +197,7 @@ pub fn parse_plugin<'a>(
                     errors
                 );
             }
-            println!("Magic effects: {:#?}", magic_effects);
+            // println!("Magic effects: {:#?}", magic_effects);
             magic_effects
         } else {
             Vec::new()

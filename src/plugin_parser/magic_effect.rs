@@ -18,6 +18,8 @@ use esplugin::GameId;
 
 use crate::plugin_parser::utils::{le_slice_to_u32, parse_zstring, split_form_id};
 
+use super::form_id::FormIdContainer;
+
 #[derive(Clone, PartialEq, Debug, Default)]
 pub struct MagicEffect {
     pub mod_name: String,
@@ -40,6 +42,12 @@ impl MagicEffect {
         FnParseLstring: Fn(&[u8]) -> String,
     {
         magic_effect(record, get_master, parse_lstring)
+    }
+}
+
+impl FormIdContainer for MagicEffect {
+    fn get_form_id_pair(&self) -> super::form_id::FormIdPair {
+        (self.mod_name.clone(), self.id)
     }
 }
 
