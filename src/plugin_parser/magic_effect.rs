@@ -29,6 +29,7 @@ pub struct MagicEffect {
     pub name: Option<String>,
     pub description: String,
     pub flags: u32,
+    pub is_hostile: bool,
     pub base_cost: f32,
 }
 
@@ -112,6 +113,8 @@ where
             })??
     };
 
+    let is_hostile = flags & 0x00000001 == 1;
+
     Ok(MagicEffect {
         mod_name,
         id: u32::from(id),
@@ -120,5 +123,6 @@ where
         base_cost,
         description,
         flags,
+        is_hostile,
     })
 }
