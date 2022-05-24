@@ -1,23 +1,15 @@
 use anyhow::anyhow;
 use nom::error::ErrorKind;
 use serde::Serialize;
-use std::io::{BufRead, Seek};
+
 use std::num::NonZeroU32;
 
-use encoding_rs::WINDOWS_1252;
-use nom::bytes::complete::{tag, take};
-use nom::combinator::{all_consuming, map, peek};
-use nom::multi::length_data;
 use nom::number::complete::{le_f32, le_u32};
-use nom::sequence::{delimited, separated_pair, tuple};
-use nom::IResult;
 
 // use crate::error::Error;
 use esplugin::record::Record;
-use esplugin::record_id::RecordId;
-use esplugin::GameId;
 
-use crate::plugin_parser::utils::{le_slice_to_u32, parse_zstring, split_form_id};
+use crate::plugin_parser::utils::{parse_zstring, split_form_id};
 
 use super::form_id::FormIdContainer;
 

@@ -6,9 +6,9 @@ use itertools::Itertools;
 use lazy_static::lazy_static;
 use potion::Potion;
 use std::collections::{HashMap, HashSet};
+use std::fs;
 use std::fs::File;
-use std::path::{Path, PathBuf};
-use std::{fs, io::BufReader};
+use std::path::PathBuf;
 
 use crate::plugin_parser::{
     form_id::FormIdContainer, ingredient::Ingredient, magic_effect::MagicEffect,
@@ -124,7 +124,7 @@ fn load_ingredients_and_effects_from_plugins(
 }
 
 pub fn do_the_thing() -> Result<(), anyhow::Error> {
-    let save_file = gimme_save_file()?;
+    let _save_file = gimme_save_file()?;
     // println!("{:#?}", save_file);
     let load_order = gimme_load_order()?;
     // println!("Load order:\n{:#?}", &load_order);

@@ -2,7 +2,6 @@ use std::num::NonZeroU32;
 
 use anyhow::anyhow;
 use encoding_rs::WINDOWS_1252;
-use nom::FindSubstring;
 
 use super::strings_table::StringsTable;
 

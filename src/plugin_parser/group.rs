@@ -1,16 +1,13 @@
-use std::io::{BufRead, Seek};
-
-use encoding_rs::WINDOWS_1252;
 use nom::bytes::complete::{tag, take};
-use nom::combinator::{all_consuming, map, peek};
-use nom::multi::length_data;
+use nom::combinator::{map, peek};
+
 use nom::number::complete::le_u32;
-use nom::sequence::{delimited, tuple};
+use nom::sequence::tuple;
 use nom::IResult;
 
 // use crate::error::Error;
 use esplugin::record::Record;
-use esplugin::record_id::RecordId;
+
 use esplugin::GameId;
 
 const GROUP_TYPE: &[u8] = b"GRUP";

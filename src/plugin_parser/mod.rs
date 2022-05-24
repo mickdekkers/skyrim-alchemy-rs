@@ -3,10 +3,8 @@
 
 use std::{num::NonZeroU32, path::Path};
 
-use encoding_rs::WINDOWS_1252;
 use esplugin::record::Record;
 use itertools::{Either, Itertools};
-use nom::IResult;
 
 use crate::plugin_parser::{
     ingredient::Ingredient,
@@ -35,7 +33,7 @@ pub fn parse_plugin<'a>(
     // println!("header_record: {:#?}", header_record);
 
     const COUNT_OFFSET: usize = 4;
-    let record_and_group_count = header_record
+    let _record_and_group_count = header_record
         .subrecords()
         .iter()
         .find(|s| s.subrecord_type() == b"HEDR" && s.data().len() > COUNT_OFFSET)
@@ -102,8 +100,8 @@ pub fn parse_plugin<'a>(
     // println!("interesting_groups length: {:#?}", interesting_groups.len());
 
     interesting_groups.iter().for_each(|ig| {
-        let label = parse_string(&ig.header.label);
-        let num_records = ig.group_records.len();
+        let _label = parse_string(&ig.header.label);
+        let _num_records = ig.group_records.len();
         // println!("Group {:?} has {:?} records.", label, num_records);
     });
 
