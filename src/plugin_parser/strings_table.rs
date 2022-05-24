@@ -59,7 +59,7 @@ pub enum StringsLocation {
 /// - Returns `Some(StringsLocation::BsaPath)` if found in a .bsa file.
 /// - Returns `None` if not found.
 fn find_strings_file(plugin_name: &str, game_plugins_path: &Path) -> Option<StringsLocation> {
-    assert_eq!(plugin_name.contains(|c| c == '/' || c == '\\'), false);
+    assert!(!plugin_name.contains(|c| c == '/' || c == '\\'));
     let strings_path = get_strings_path(plugin_name);
     let strings_path_on_disk = game_plugins_path.join(&strings_path);
 
@@ -130,7 +130,7 @@ impl StringsTable {
                 }
                 StringsLocation::BsaPath(bsa_path, file_in_bsa) => {
                     let mut bsa: bsa::SomeReaderV10X<_> = bsa::open(&bsa_path)?;
-                    bsa.extract(&file_in_bsa, &mut data.deref_mut())?;
+                    bsa.extract(file_in_bsa, &mut data.deref_mut())?;
                 }
             }
         }

@@ -30,8 +30,7 @@ pub fn parse_zstring(data: &[u8]) -> String {
                 true => Some(index),
                 false => None,
             })
-            .expect("expected null terminated string to contain null")
-            .clone();
+            .expect("expected null terminated string to contain null");
         parse_string(&data[..null_index])
     }
 }

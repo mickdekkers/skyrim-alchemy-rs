@@ -113,7 +113,7 @@ where
 
     Ok(MagicEffect {
         mod_name,
-        id: u32::from(id),
+        id,
         editor_id,
         name: full_name,
         base_cost,

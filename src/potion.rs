@@ -115,10 +115,7 @@ impl<'a> PotionEffect<'a> {
                 }) / 10.0
             };
 
-            let gold_value = (self.magic_effect.base_cost
-                * (magnitude_factor * duration_factor).powf(1.1))
-                as u32;
-            gold_value
+            (self.magic_effect.base_cost * (magnitude_factor * duration_factor).powf(1.1)) as u32
         })
     }
 
@@ -270,7 +267,7 @@ impl<'a> Potion<'a> {
 
         Ok(Self {
             effects: active_effects,
-            ingredients: ingredients.iter().map(|ig| *ig).collect_vec(),
+            ingredients: ingredients.iter().copied().collect_vec(),
             gold_value: OnceCell::new(),
         })
     }
@@ -294,8 +291,7 @@ impl<'a> Potion<'a> {
             .get_primary_effect()
             .magic_effect
             .name
-            .as_ref()
-            .map(|name| name.as_str())
+            .as_deref()
             .unwrap_or("<MISSING_EFFECT_NAME>");
         format!("{} of {}", type_string, primary_effect_name)
     }

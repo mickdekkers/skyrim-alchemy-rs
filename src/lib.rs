@@ -52,7 +52,7 @@ fn load_ingredients_and_effects_from_plugins(
     ),
     anyhow::Error,
 > {
-    if load_order.len() < 1 {
+    if load_order.is_empty() {
         Err(anyhow!("Load order empty!"))?
     }
 
@@ -113,7 +113,7 @@ fn load_ingredients_and_effects_from_plugins(
     // TODO: find way to avoid clone here (can't difference `&HashSet<(String, u32)>` and `&HashSet<&(String, u32)>)` because they're different types)
     let mgef_keys = magic_effects
         .keys()
-        .map(|k| k.clone())
+        .cloned()
         .collect::<HashSet<(String, u32)>>();
 
     // TODO: if missing mgefs, identify which ingredients
@@ -149,7 +149,7 @@ pub fn do_the_thing() -> Result<(), anyhow::Error> {
 
     let test_potion = Potion::from_ingredients(&test_potion_ingredients, &magic_effects);
 
-    println!("Test potion:\n{}", test_potion.unwrap().to_string());
+    println!("Test potion:\n{}", test_potion.unwrap());
 
     Ok(())
 }

@@ -28,7 +28,7 @@ pub fn parse_plugin<'a>(
     game_plugins_path: &Path,
 ) -> Result<(Vec<Ingredient>, Vec<MagicEffect>), anyhow::Error> {
     let (remaining_input, header_record) =
-        Record::parse(&input, esplugin::GameId::SkyrimSE, false).map_err(nom_err_to_anyhow_err)?;
+        Record::parse(input, esplugin::GameId::SkyrimSE, false).map_err(nom_err_to_anyhow_err)?;
 
     // println!("header_record: {:#?}", header_record);
 
@@ -63,6 +63,8 @@ pub fn parse_plugin<'a>(
         // See https://en.uesp.net/wiki/Skyrim:Form_ID
         let mod_id = (u32::from(form_id) >> 24) as usize;
         let num_masters = masters.len();
+
+        #[allow(clippy::comparison_chain)]
         if mod_id == num_masters {
             Some(String::from(plugin_name))
         } else if mod_id < num_masters {
@@ -79,18 +81,15 @@ pub fn parse_plugin<'a>(
     // println!("record_and_group_count: {:#?}", record_and_group_count);
     // let (input2, record_ids) = parse_record_ids(input1, game_id, &header_record, filename)?;
 
-    let skip_group_records = |label| match &label {
-        // We're only interested in ingredients and magic effects.
-        b"INGR" | b"MGEF" => false,
-        _ => true,
-    };
+    // We're only interested in ingredients and magic effects.
+    let skip_group_records = |label| !matches!(&label, b"INGR" | b"MGEF");
 
     let mut interesting_groups = Vec::new();
     let mut input1 = remaining_input;
     while !input1.is_empty() {
         let (input2, group) =
             group::Group::parse(input1, skip_group_records).map_err(nom_err_to_anyhow_err)?;
-        if group.group_records.len() > 0 {
+        if !group.group_records.is_empty() {
             interesting_groups.push(group);
         }
         input1 = input2;
@@ -141,7 +140,7 @@ pub fn parse_plugin<'a>(
                     Err(v) => Either::Right(v),
                 });
 
-            if errors.len() > 0 {
+            if !errors.is_empty() {
                 println!(
                     "Failed to parse {} ingredients records: {:#?}",
                     errors.len(),
@@ -188,7 +187,7 @@ pub fn parse_plugin<'a>(
                     Err(v) => Either::Right(v),
                 });
 
-            if errors.len() > 0 {
+            if !errors.is_empty() {
                 println!(
                     "Failed to parse {} magic effects records: {:#?}",
                     errors.len(),
