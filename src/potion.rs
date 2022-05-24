@@ -1,4 +1,4 @@
-use std::{cmp::max, collections::HashMap};
+use std::{cmp::max, collections::HashMap, fmt::Display};
 
 use arrayvec::ArrayVec;
 use itertools::Itertools;
@@ -20,8 +20,8 @@ const MAX_INGREDIENTS: usize = 3;
 const EFFECT_POWER_FACTOR: f32 = 6.0;
 
 /// This is basically an `IngredientEffect` with some extra data + a ref to its `MagicEffect`
-struct PotionEffect<'a> {
-    pub effect: &'a MagicEffect,
+pub struct PotionEffect<'a> {
+    pub magic_effect: &'a MagicEffect,
     base_magnitude: f32,
     base_duration: u32,
     magnitude: OnceCell<u32>,
@@ -39,7 +39,7 @@ impl<'a> PotionEffect<'a> {
         PotionEffect {
             base_duration: igef.duration,
             base_magnitude: igef.magnitude,
-            effect: all_magic_effects.get(&igef.get_form_id_pair()).unwrap(),
+            magic_effect: all_magic_effects.get(&igef.get_form_id_pair()).unwrap(),
             duration: OnceCell::new(),
             magnitude: OnceCell::new(),
             gold_value: OnceCell::new(),
@@ -53,7 +53,7 @@ impl<'a> PotionEffect<'a> {
         *self.magnitude.get_or_init(|| {
             let magnitude = {
                 // "No magnitude" flag
-                if self.effect.flags & 0x00000400 != 0 {
+                if self.magic_effect.flags & 0x00000400 != 0 {
                     0.0
                 } else {
                     self.base_magnitude
@@ -62,7 +62,7 @@ impl<'a> PotionEffect<'a> {
 
             let magnitude_factor = {
                 // "Power affects magnitude" flag
-                if self.effect.flags & 0x00200000 != 0 {
+                if self.magic_effect.flags & 0x00200000 != 0 {
                     EFFECT_POWER_FACTOR
                 } else {
                     1.0
@@ -80,7 +80,7 @@ impl<'a> PotionEffect<'a> {
         *self.duration.get_or_init(|| {
             let duration = {
                 // "No duration" flag
-                if self.effect.flags & 0x00000200 != 0 {
+                if self.magic_effect.flags & 0x00000200 != 0 {
                     0.0
                 } else {
                     self.base_duration as f32
@@ -89,7 +89,7 @@ impl<'a> PotionEffect<'a> {
 
             let duration_factor = {
                 // "Power affects duration" flag
-                if self.effect.flags & 0x00400000 != 0 {
+                if self.magic_effect.flags & 0x00400000 != 0 {
                     EFFECT_POWER_FACTOR
                 } else {
                     1.0
@@ -115,28 +115,48 @@ impl<'a> PotionEffect<'a> {
                 }) / 10.0
             };
 
-            let gold_value =
-                (self.effect.base_cost * (magnitude_factor * duration_factor).powf(1.1)) as u32;
+            let gold_value = (self.magic_effect.base_cost
+                * (magnitude_factor * duration_factor).powf(1.1))
+                as u32;
             gold_value
         })
+    }
+
+    pub fn get_description(&self) -> String {
+        self.magic_effect
+            .description
+            .replace("<mag>", &self.get_magnitude().to_string())
+            .replace("<dur>", &self.get_duration().to_string())
     }
 }
 
 impl<'a> FormIdContainer for PotionEffect<'a> {
     fn get_form_id_pair(&self) -> crate::plugin_parser::form_id::FormIdPair {
-        (self.effect.mod_name.clone(), self.effect.id)
+        (self.magic_effect.mod_name.clone(), self.magic_effect.id)
     }
 
     fn get_form_id_pair_ref(&self) -> crate::plugin_parser::form_id::FormIdPairRef<'a> {
-        (self.effect.mod_name.as_str(), self.effect.id)
+        (self.magic_effect.mod_name.as_str(), self.magic_effect.id)
     }
 }
 
-struct Potion<'a> {
+pub struct Potion<'a> {
     pub ingredients: Vec<&'a Ingredient>,
     /// Potion's effects sorted by strength descending
     pub effects: Vec<PotionEffect<'a>>,
     gold_value: OnceCell<u32>,
+}
+
+impl<'a> Display for Potion<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}\n{}\nValue: {} gold",
+            self.get_potion_name(),
+            self.get_potion_description(),
+            self.get_gold_value()
+        )
+    }
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -158,6 +178,15 @@ pub enum PotionType {
     Poison,
 }
 
+impl Display for PotionType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match *self {
+            PotionType::Poison => write!(f, "Poison"),
+            PotionType::Potion => write!(f, "Potion"),
+        }
+    }
+}
+
 impl<'a> Potion<'a> {
     pub fn get_gold_value(&self) -> u32 {
         *self.gold_value.get_or_init(|| {
@@ -167,7 +196,7 @@ impl<'a> Potion<'a> {
     }
 
     pub fn from_ingredients(
-        ingredients: &'a ArrayVec<Ingredient, MAX_INGREDIENTS>,
+        ingredients: &'a ArrayVec<&Ingredient, MAX_INGREDIENTS>,
         all_magic_effects: &'a HashMap<(String, u32), MagicEffect>,
     ) -> Result<Self, PotionCraftError<'a>> {
         if ingredients.len() < MIN_INGREDIENTS {
@@ -241,10 +270,40 @@ impl<'a> Potion<'a> {
 
         Ok(Self {
             effects: active_effects,
-            ingredients: ingredients.iter().collect_vec(),
+            ingredients: ingredients.iter().map(|ig| *ig).collect_vec(),
             gold_value: OnceCell::new(),
         })
     }
 
-    pub fn get_potion_type(&self) -> PotionType {}
+    pub fn get_primary_effect(&self) -> &PotionEffect<'a> {
+        // The effects are sorted by strength descending
+        // See https://en.uesp.net/wiki/Skyrim:Alchemy_Effects#Multiple-Effect_Potions
+        self.effects.first().unwrap()
+    }
+
+    pub fn get_potion_type(&self) -> PotionType {
+        match self.get_primary_effect().magic_effect.is_hostile {
+            true => PotionType::Poison,
+            false => PotionType::Potion,
+        }
+    }
+
+    pub fn get_potion_name(&self) -> String {
+        let type_string = self.get_potion_type().to_string();
+        let primary_effect_name = self
+            .get_primary_effect()
+            .magic_effect
+            .name
+            .as_ref()
+            .map(|name| name.as_str())
+            .unwrap_or("<MISSING_EFFECT_NAME>");
+        format!("{} of {}", type_string, primary_effect_name)
+    }
+
+    pub fn get_potion_description(&self) -> String {
+        self.effects
+            .iter()
+            .map(|potef| potef.get_description())
+            .join(" ")
+    }
 }

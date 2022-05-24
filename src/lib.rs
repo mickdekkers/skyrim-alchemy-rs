@@ -1,8 +1,10 @@
 #![feature(hash_drain_filter)]
 
 use anyhow::{anyhow, Context};
+use arrayvec::ArrayVec;
 use itertools::Itertools;
 use lazy_static::lazy_static;
+use potion::Potion;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::path::{Path, PathBuf};
@@ -138,6 +140,16 @@ pub fn do_the_thing() -> Result<(), anyhow::Error> {
 
     // TODO: sort ingredients by name
     // TODO: create table of effects -> ingredients
+
+    let mut test_potion_ingredients = ArrayVec::<&Ingredient, 3>::new();
+    // Wheat
+    test_potion_ingredients.push(ingredients.get(&("Skyrim.esm".into(), 307386)).unwrap());
+    // Giant's Toe
+    test_potion_ingredients.push(ingredients.get(&("Skyrim.esm".into(), 240996)).unwrap());
+
+    let test_potion = Potion::from_ingredients(&test_potion_ingredients, &magic_effects);
+
+    println!("Test potion:\n{}", test_potion.unwrap().to_string());
 
     Ok(())
 }
