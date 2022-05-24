@@ -219,14 +219,14 @@ impl<'a> Potion<'a> {
         let ingredients_effects = ingredients
             .iter()
             .flat_map(|ig| ig.effects.iter())
-            .sorted_by_key(|igef| (&igef.mod_name, igef.id))
+            .sorted_by_key(|igef| igef.get_form_id_pair_ref())
             .collect_vec();
 
         assert!(ingredients_effects.len() == ingredients.len() * 4);
 
         let ingredients_effects_counts = ingredients_effects
             .iter()
-            .counts_by(|igef| (&igef.mod_name, igef.id));
+            .counts_by(|igef| igef.get_form_id_pair_ref());
 
         if ingredients_effects_counts.values().all(|count| *count < 2) {
             return Err(PotionCraftError::NoSharedEffects);
@@ -237,7 +237,7 @@ impl<'a> Potion<'a> {
             .iter()
             .filter(|igef| {
                 *(ingredients_effects_counts
-                    .get(&(&igef.mod_name, igef.id))
+                    .get(&igef.get_form_id_pair_ref())
                     .unwrap())
                     > 1
             })

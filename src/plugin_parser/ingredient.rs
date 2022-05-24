@@ -1,4 +1,5 @@
 use anyhow::anyhow;
+use itertools::Itertools;
 use nom::error::ErrorKind;
 use serde::Serialize;
 
@@ -33,13 +34,6 @@ pub struct IngredientEffect {
     pub magnitude: f32,
 }
 
-impl IngredientEffect {
-    /// Get ingredient effect strength for comparison purposes
-    pub fn get_strength(&self) -> f32 {
-        f32::max(self.magnitude, 1.0) * f32::max(self.duration as f32, 1.0)
-    }
-}
-
 impl Ingredient {
     pub fn parse<FnGetMaster, FnParseLstring>(
         record: &Record,
@@ -51,6 +45,14 @@ impl Ingredient {
         FnParseLstring: Fn(&[u8]) -> String,
     {
         ingredient(record, get_master, parse_lstring)
+    }
+
+    /// Returns whether the ingredient shares any effects with another ingredient (and thus can be combined)
+    pub fn shares_effects_with(&self, other: &Ingredient) -> bool {
+        // Note: effects vecs are sorted and (essentially) limited to 4 elements, so this shouldn't be too slow
+        self.effects
+            .iter()
+            .any(|self_effect| other.effects.iter().contains(self_effect))
     }
 }
 
@@ -160,6 +162,9 @@ where
     }
 
     // TODO: when merging ingredients lists from multiple plugins, do this https://github.com/cguebert/SkyrimAlchemyHelper/blob/7904e2bcfe5d6561652928bd815213a1e0ba95e8/libs/modParser/ConfigParser.cpp#L118
+
+    // Sort to make later usage more optimized
+    effects.sort_by_key(|eff| eff.get_form_id_pair());
 
     Ok(Ingredient {
         mod_name,

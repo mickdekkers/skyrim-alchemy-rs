@@ -9,13 +9,16 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::fs::File;
 use std::path::PathBuf;
+use std::time::Instant;
 
 use crate::plugin_parser::{
     form_id::FormIdContainer, ingredient::Ingredient, magic_effect::MagicEffect,
 };
+use crate::shared_effects_cache::SharedEffectsCache;
 
 mod plugin_parser;
 mod potion;
+mod shared_effects_cache;
 
 lazy_static! {
     static ref GAME_PATH: PathBuf =
@@ -139,7 +142,8 @@ pub fn do_the_thing() -> Result<(), anyhow::Error> {
     fs::write("data/magic_effects.json", serialized_magic_effects)?;
 
     // TODO: sort ingredients by name
-    // TODO: create table of effects -> ingredients
+
+    let mut shared_effects_cache = SharedEffectsCache::new();
 
     let mut test_potion_ingredients = ArrayVec::<&Ingredient, 3>::new();
     // Wheat
@@ -150,6 +154,91 @@ pub fn do_the_thing() -> Result<(), anyhow::Error> {
     let test_potion = Potion::from_ingredients(&test_potion_ingredients, &magic_effects);
 
     println!("Test potion:\n{}", test_potion.unwrap());
+
+    let start = Instant::now();
+    println!(
+        "Number of possible 2-ingredient combos: {} (calculated in {:?})",
+        ingredients.values().combinations(2).count(),
+        start.elapsed()
+    );
+
+    let start = Instant::now();
+    println!(
+        "Number of valid 2-ingredient combos: {} (calculated in {:?})",
+        ingredients
+            .values()
+            .combinations(2)
+            .filter(|combo| {
+                let a = combo.get(0).unwrap();
+                let b = combo.get(1).unwrap();
+                a.shares_effects_with(b)
+            })
+            .count(),
+        start.elapsed()
+    );
+
+    let start = Instant::now();
+    println!(
+        "Number of possible 3-ingredient combos: {} (calculated in {:?})",
+        ingredients.values().combinations(3).count(),
+        start.elapsed()
+    );
+
+    let start = Instant::now();
+    println!(
+        "Number of valid 3-ingredient combos: {} (calculated in {:?})",
+        ingredients
+            .values()
+            .combinations(3)
+            .filter(|combo| {
+                let a = combo.get(0).unwrap();
+                let b = combo.get(1).unwrap();
+                let c = combo.get(2).unwrap();
+
+                // Ensure all three ingredients share an effect with at least one of the others
+                (a.shares_effects_with(b) && (c.shares_effects_with(a) || c.shares_effects_with(b)))
+                    || (a.shares_effects_with(c) && b.shares_effects_with(c))
+            })
+            .count(),
+        start.elapsed()
+    );
+
+    let start = Instant::now();
+    println!(
+        "[CACHED] Number of valid 3-ingredient combos: {} (calculated in {:?})",
+        ingredients
+            .values()
+            .combinations(3)
+            .filter(|combo| {
+                let a = combo.get(0).unwrap();
+                let b = combo.get(1).unwrap();
+                let c = combo.get(2).unwrap();
+
+                // Ensure all three ingredients share an effect with at least one of the others
+                (shared_effects_cache.cached_shares_effects_with(a, b)
+                    && (shared_effects_cache.cached_shares_effects_with(c, a)
+                        || shared_effects_cache.cached_shares_effects_with(c, b)))
+                    || (shared_effects_cache.cached_shares_effects_with(a, c)
+                        && shared_effects_cache.cached_shares_effects_with(b, c))
+            })
+            .count(),
+        start.elapsed()
+    );
+
+    let start = Instant::now();
+    println!(
+        "[FULLY CACHED] Number of valid 2-ingredient combos: {} (calculated in {:?})",
+        ingredients
+            .values()
+            .combinations(2)
+            .filter(|combo| {
+                let a = combo.get(0).unwrap();
+                let b = combo.get(1).unwrap();
+                shared_effects_cache.cached_shares_effects_with(a, b)
+            })
+            .count(),
+        start.elapsed()
+    );
 
     Ok(())
 }
