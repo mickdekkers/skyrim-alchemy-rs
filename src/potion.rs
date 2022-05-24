@@ -128,6 +128,10 @@ impl<'a> PotionEffect<'a> {
 }
 
 impl<'a> FormIdContainer for PotionEffect<'a> {
+    fn get_form_id(&self) -> u32 {
+        self.magic_effect.form_id
+    }
+
     fn get_form_id_pair(&self) -> crate::plugin_parser::form_id::FormIdPair {
         (self.magic_effect.mod_name.clone(), self.magic_effect.id)
     }

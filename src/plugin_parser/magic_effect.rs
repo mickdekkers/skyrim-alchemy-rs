@@ -15,6 +15,7 @@ use super::form_id::FormIdContainer;
 
 #[derive(Clone, PartialEq, Debug, Default, Serialize)]
 pub struct MagicEffect {
+    pub form_id: u32,
     pub mod_name: String,
     pub id: u32,
     pub editor_id: String,
@@ -40,6 +41,10 @@ impl MagicEffect {
 }
 
 impl FormIdContainer for MagicEffect {
+    fn get_form_id(&self) -> u32 {
+        self.form_id
+    }
+
     fn get_form_id_pair(&self) -> super::form_id::FormIdPair {
         (self.mod_name.clone(), self.id)
     }
@@ -62,12 +67,12 @@ where
 {
     assert!(&record.header_type() == b"MGEF");
 
-    let id = record
+    let form_id = record
         .header()
         .form_id()
         .ok_or_else(|| anyhow!("Magic effect record has no form ID"))?;
 
-    let (mod_name, id) = split_form_id(id, &get_master)?;
+    let (mod_name, id) = split_form_id(form_id, &get_master)?;
 
     let editor_id = record
         .subrecords()
@@ -112,6 +117,7 @@ where
     let is_hostile = flags & 0x00000001 == 1;
 
     Ok(MagicEffect {
+        form_id: u32::from(form_id),
         mod_name,
         id,
         editor_id,

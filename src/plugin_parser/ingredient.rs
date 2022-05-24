@@ -19,6 +19,7 @@ use super::form_id::FormIdContainer;
 
 #[derive(Clone, Debug, Default, Serialize)]
 pub struct Ingredient {
+    pub form_id: u32,
     pub mod_name: String,
     pub id: u32,
     pub editor_id: String,
@@ -28,6 +29,7 @@ pub struct Ingredient {
 
 #[derive(Clone, PartialEq, Debug, Default, Serialize)]
 pub struct IngredientEffect {
+    pub form_id: u32,
     pub mod_name: String,
     pub id: u32,
     pub duration: u32,
@@ -57,6 +59,10 @@ impl Ingredient {
 }
 
 impl FormIdContainer for Ingredient {
+    fn get_form_id(&self) -> u32 {
+        self.form_id
+    }
+
     fn get_form_id_pair(&self) -> super::form_id::FormIdPair {
         (self.mod_name.clone(), self.id)
     }
@@ -83,6 +89,10 @@ impl PartialEq for Ingredient {
 impl Eq for Ingredient {}
 
 impl FormIdContainer for IngredientEffect {
+    fn get_form_id(&self) -> u32 {
+        self.form_id
+    }
+
     fn get_form_id_pair(&self) -> super::form_id::FormIdPair {
         (self.mod_name.clone(), self.id)
     }
@@ -103,12 +113,12 @@ where
 {
     assert!(&record.header_type() == b"INGR");
 
-    let id = record
+    let form_id = record
         .header()
         .form_id()
         .ok_or_else(|| anyhow!("Ingredient record has no form ID"))?;
 
-    let (mod_name, id) = split_form_id(id, &get_master)?;
+    let (mod_name, id) = split_form_id(form_id, &get_master)?;
 
     let editor_id = record
         .subrecords()
@@ -144,11 +154,13 @@ where
                         })?
                         .1;
 
-                    let (mod_name, efid) =
-                        split_form_id(std::num::NonZeroU32::new(efid).unwrap(), &get_master)?;
+                    let form_id = efid;
+                    let (mod_name, id) =
+                        split_form_id(std::num::NonZeroU32::new(form_id).unwrap(), &get_master)?;
                     effects.push(IngredientEffect {
+                        form_id,
                         mod_name,
-                        id: efid,
+                        id,
                         duration,
                         magnitude,
                     });
@@ -167,6 +179,7 @@ where
     effects.sort_by_key(|eff| eff.get_form_id_pair());
 
     Ok(Ingredient {
+        form_id: u32::from(form_id),
         mod_name,
         id,
         editor_id,
