@@ -51,6 +51,10 @@ impl FormIdContainer for MagicEffect {
     fn get_form_id_pair(&self) -> super::form_id::FormIdPair {
         (self.mod_name.clone(), self.id)
     }
+
+    fn get_form_id_pair_ref(&self) -> super::form_id::FormIdPairRef {
+        (self.mod_name.as_str(), self.id)
+    }
 }
 
 // TODO: only parse magic effects which are actually used by ingredients?

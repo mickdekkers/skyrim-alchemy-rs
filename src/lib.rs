@@ -13,6 +13,7 @@ use crate::plugin_parser::{
 };
 
 mod plugin_parser;
+mod potion;
 
 lazy_static! {
     static ref GAME_PATH: PathBuf =
@@ -53,6 +54,7 @@ fn load_ingredients_and_effects_from_plugins(
         Err(anyhow!("Load order empty!"))?
     }
 
+    // TODO: use &str instead of String for keys
     let mut magic_effects = HashMap::<(String, u32), MagicEffect>::new();
     let mut ingredients = HashMap::<(String, u32), Ingredient>::new();
     let mut ingredient_effect_ids = HashSet::<(String, u32)>::new();
@@ -133,6 +135,9 @@ pub fn do_the_thing() -> Result<(), anyhow::Error> {
 
     fs::write("data/ingredients.json", serialized_ingredients)?;
     fs::write("data/magic_effects.json", serialized_magic_effects)?;
+
+    // TODO: sort ingredients by name
+    // TODO: create table of effects -> ingredients
 
     Ok(())
 }

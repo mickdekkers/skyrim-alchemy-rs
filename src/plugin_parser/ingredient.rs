@@ -1,6 +1,8 @@
 use anyhow::anyhow;
 use nom::error::ErrorKind;
 use serde::Serialize;
+use std::cmp::max;
+use std::hash::Hash;
 use std::io::{BufRead, Seek};
 use std::num::NonZeroU32;
 
@@ -21,7 +23,7 @@ use crate::plugin_parser::utils::{le_slice_to_u32, parse_zstring, split_form_id}
 
 use super::form_id::FormIdContainer;
 
-#[derive(Clone, PartialEq, Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default, Serialize)]
 pub struct Ingredient {
     pub mod_name: String,
     pub id: u32,
@@ -36,6 +38,13 @@ pub struct IngredientEffect {
     pub id: u32,
     pub duration: u32,
     pub magnitude: f32,
+}
+
+impl IngredientEffect {
+    /// Get ingredient effect strength for comparison purposes
+    pub fn get_strength(&self) -> f32 {
+        f32::max(self.magnitude, 1.0) * f32::max(self.duration as f32, 1.0)
+    }
 }
 
 impl Ingredient {
@@ -56,11 +65,35 @@ impl FormIdContainer for Ingredient {
     fn get_form_id_pair(&self) -> super::form_id::FormIdPair {
         (self.mod_name.clone(), self.id)
     }
+
+    fn get_form_id_pair_ref(&self) -> super::form_id::FormIdPairRef {
+        (self.mod_name.as_str(), self.id)
+    }
 }
+
+impl Hash for Ingredient {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        // mod_name + id are enough to tell ingredients apart
+        self.mod_name.hash(state);
+        self.id.hash(state);
+    }
+}
+
+impl PartialEq for Ingredient {
+    fn eq(&self, other: &Self) -> bool {
+        self.mod_name == other.mod_name && self.id == other.id
+    }
+}
+
+impl Eq for Ingredient {}
 
 impl FormIdContainer for IngredientEffect {
     fn get_form_id_pair(&self) -> super::form_id::FormIdPair {
         (self.mod_name.clone(), self.id)
+    }
+
+    fn get_form_id_pair_ref(&self) -> super::form_id::FormIdPairRef {
+        (self.mod_name.as_str(), self.id)
     }
 }
 
