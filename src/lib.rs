@@ -5,6 +5,7 @@ use arrayvec::ArrayVec;
 use itertools::Itertools;
 use lazy_static::lazy_static;
 use potion::Potion;
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::fs::File;
@@ -14,11 +15,9 @@ use std::time::Instant;
 use crate::plugin_parser::{
     form_id::FormIdContainer, ingredient::Ingredient, magic_effect::MagicEffect,
 };
-use crate::shared_effects_cache::SharedEffectsCache;
 
 mod plugin_parser;
 mod potion;
-mod shared_effects_cache;
 
 lazy_static! {
     static ref GAME_PATH: PathBuf =
@@ -143,8 +142,6 @@ pub fn do_the_thing() -> Result<(), anyhow::Error> {
 
     // TODO: sort ingredients by name
 
-    let mut shared_effects_cache = SharedEffectsCache::new();
-
     let mut test_potion_ingredients = ArrayVec::<&Ingredient, 3>::new();
     // Wheat
     test_potion_ingredients.push(ingredients.get(&("Skyrim.esm".into(), 307386)).unwrap());
@@ -155,89 +152,57 @@ pub fn do_the_thing() -> Result<(), anyhow::Error> {
 
     println!("Test potion:\n{}", test_potion.unwrap());
 
+    // Note: temporarily storing the combinations and then using par_iter is about twice as fast as
+    // using par_bridge directly on the combinations iterator (at the cost of some ram)
     let start = Instant::now();
+    let combos_3: Vec<_> = ingredients.values().combinations(3).collect();
     println!(
-        "Number of possible 2-ingredient combos: {} (calculated in {:?})",
-        ingredients.values().combinations(2).count(),
+        "Found {} possible 3-ingredient combos (in {:?})",
+        combos_3.len(),
         start.elapsed()
     );
 
     let start = Instant::now();
+    let valid_combos_3: Vec<_> = combos_3
+        .par_iter()
+        .filter(|combo| {
+            let a = combo.get(0).unwrap();
+            let b = combo.get(1).unwrap();
+            let c = combo.get(2).unwrap();
+
+            // Ensure all three ingredients share an effect with at least one of the others
+            (a.shares_effects_with(b) && (c.shares_effects_with(a) || c.shares_effects_with(b)))
+                || (a.shares_effects_with(c) && b.shares_effects_with(c))
+        })
+        .collect();
     println!(
-        "Number of valid 2-ingredient combos: {} (calculated in {:?})",
-        ingredients
-            .values()
-            .combinations(2)
-            .filter(|combo| {
-                let a = combo.get(0).unwrap();
-                let b = combo.get(1).unwrap();
-                a.shares_effects_with(b)
-            })
-            .count(),
+        "Found {} valid 3-ingredient combos (in {:?})",
+        valid_combos_3.len(),
         start.elapsed()
     );
 
     let start = Instant::now();
+    let mut potions_3: Vec<_> = valid_combos_3
+        .par_iter()
+        .map(|combo| {
+            let ingredients = ArrayVec::<_, 3>::from_iter(combo.iter().copied());
+            Potion::from_ingredients(&ingredients, &magic_effects)
+                .expect("ingredients combo should be valid Potion")
+        })
+        .collect();
+    potions_3.sort_by_key(|pot| pot.get_gold_value());
+    potions_3.reverse();
     println!(
-        "Number of possible 3-ingredient combos: {} (calculated in {:?})",
-        ingredients.values().combinations(3).count(),
+        "Created {} Potion instances (in {:?})",
+        potions_3.len(),
         start.elapsed()
     );
 
-    let start = Instant::now();
+    println!();
+
     println!(
-        "Number of valid 3-ingredient combos: {} (calculated in {:?})",
-        ingredients
-            .values()
-            .combinations(3)
-            .filter(|combo| {
-                let a = combo.get(0).unwrap();
-                let b = combo.get(1).unwrap();
-                let c = combo.get(2).unwrap();
-
-                // Ensure all three ingredients share an effect with at least one of the others
-                (a.shares_effects_with(b) && (c.shares_effects_with(a) || c.shares_effects_with(b)))
-                    || (a.shares_effects_with(c) && b.shares_effects_with(c))
-            })
-            .count(),
-        start.elapsed()
-    );
-
-    let start = Instant::now();
-    println!(
-        "[CACHED] Number of valid 3-ingredient combos: {} (calculated in {:?})",
-        ingredients
-            .values()
-            .combinations(3)
-            .filter(|combo| {
-                let a = combo.get(0).unwrap();
-                let b = combo.get(1).unwrap();
-                let c = combo.get(2).unwrap();
-
-                // Ensure all three ingredients share an effect with at least one of the others
-                (shared_effects_cache.cached_shares_effects_with(a, b)
-                    && (shared_effects_cache.cached_shares_effects_with(c, a)
-                        || shared_effects_cache.cached_shares_effects_with(c, b)))
-                    || (shared_effects_cache.cached_shares_effects_with(a, c)
-                        && shared_effects_cache.cached_shares_effects_with(b, c))
-            })
-            .count(),
-        start.elapsed()
-    );
-
-    let start = Instant::now();
-    println!(
-        "[FULLY CACHED] Number of valid 2-ingredient combos: {} (calculated in {:?})",
-        ingredients
-            .values()
-            .combinations(2)
-            .filter(|combo| {
-                let a = combo.get(0).unwrap();
-                let b = combo.get(1).unwrap();
-                shared_effects_cache.cached_shares_effects_with(a, b)
-            })
-            .count(),
-        start.elapsed()
+        "Top 10 potions with 3 ingredients:\n\n{}",
+        potions_3.iter().take(10).join("\n\n")
     );
 
     Ok(())

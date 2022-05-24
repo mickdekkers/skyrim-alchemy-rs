@@ -152,10 +152,17 @@ impl<'a> Display for Potion<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "{}\n{}\nValue: {} gold",
+            "{}\n{}\nValue: {} gold\nIngredients:\n{}",
             self.get_potion_name(),
             self.get_potion_description(),
-            self.get_gold_value()
+            self.get_gold_value(),
+            self.ingredients
+                .iter()
+                .map(|ig| String::from("- ")
+                    + ig.name
+                        .as_ref()
+                        .unwrap_or(&"<MISSING_INGREDIENT_NAME>".into()))
+                .join("\n")
         )
     }
 }
@@ -197,7 +204,7 @@ impl<'a> Potion<'a> {
     }
 
     pub fn from_ingredients(
-        ingredients: &'a ArrayVec<&Ingredient, MAX_INGREDIENTS>,
+        ingredients: &ArrayVec<&'a Ingredient, MAX_INGREDIENTS>,
         all_magic_effects: &'a HashMap<(String, u32), MagicEffect>,
     ) -> Result<Self, PotionCraftError<'a>> {
         if ingredients.len() < MIN_INGREDIENTS {

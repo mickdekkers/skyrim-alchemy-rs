@@ -734,6 +734,7 @@ dependencies = [
  "memmap",
  "nom",
  "once_cell",
+ "rayon",
  "serde",
  "serde_json",
  "skyrim_savegame",
