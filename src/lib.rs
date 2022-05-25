@@ -2,10 +2,11 @@
 
 use anyhow::{anyhow, Context};
 use lazy_static::lazy_static;
+use log_err::{LogErrOption, LogErrResult};
+use skyrim_savegame::{ChangeForm, FormIdType, SaveFile};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::fs::File;
-use std::io::Write;
 use std::path::PathBuf;
 
 use crate::plugin_parser::{
@@ -126,8 +127,6 @@ fn load_ingredients_and_effects_from_plugins(
 }
 
 pub fn do_the_thing() -> Result<(), anyhow::Error> {
-    let save_file = gimme_save_file()?;
-    log::info!("{:#?}", save_file);
     let load_order = gimme_load_order()?;
     log::debug!("Load order:\n{:#?}", &load_order);
     let (ingredients, magic_effects) = load_ingredients_and_effects_from_plugins(&load_order)?;
@@ -140,22 +139,69 @@ pub fn do_the_thing() -> Result<(), anyhow::Error> {
     // fs::write("data/ingredients.json", serialized_ingredients)?;
     // fs::write("data/magic_effects.json", serialized_magic_effects)?;
 
-    let potions_list = PotionsList::build(ingredients, magic_effects);
+    // let potions_list = PotionsList::build(ingredients, magic_effects);
 
-    potions_list
-        .get_potions()
-        .filter(|p| {
-            p.ingredients.iter().all(|ig| {
-                matches!(
-                    ig.name.as_deref(),
-                    Some("Lavender") | Some("Hanging Moss") | Some("Blue Mountain Flower")
-                )
-            })
-        })
-        .take(100)
-        .for_each(|p| log::info!("{}\n", p));
+    // potions_list
+    //     .get_potions()
+    //     .filter(|p| {
+    //         p.ingredients.iter().all(|ig| {
+    //             matches!(
+    //                 ig.name.as_deref(),
+    //                 Some("Lavender") | Some("Hanging Moss") | Some("Blue Mountain Flower")
+    //             )
+    //         })
+    //     })
+    //     .take(100)
+    //     .for_each(|p| log::info!("{}\n", p));
 
     // TODO: filter PotionsList to include only ingredients that the player has
 
+    let save_file = gimme_save_file()?;
+    log::info!("{:#?}", save_file);
+
+    let player_change_form = save_file
+        .change_forms
+        .iter()
+        .find(|cf| {
+            matches!(
+                get_change_form_data_type(cf),
+                Some(ChangeFormDataType::Actor)
+            ) && ({
+                let form_id = get_real_form_id(&cf.form_id, &save_file).log_unwrap();
+
+                // Is player change form
+                form_id == 0x14
+            })
+        })
+        .log_expect("save game contains no player data");
+
+    dbg!(player_change_form);
+
     Ok(())
+}
+
+#[derive(Debug)]
+enum ChangeFormDataType {
+    Actor,
+}
+
+/// Returns `Some(ChangeFormDataType)` if it's a data type we care about
+fn get_change_form_data_type(change_form: &ChangeForm) -> Option<ChangeFormDataType> {
+    // Look at lower 6 bits
+    match change_form.data_type & 0x3F {
+        1 => Some(ChangeFormDataType::Actor),
+        _ => None,
+    }
+}
+
+fn get_real_form_id(raw_form_id: &FormIdType, save_file: &SaveFile) -> Result<u32, anyhow::Error> {
+    match raw_form_id {
+        FormIdType::Index(value) => Ok(*save_file
+            .form_id_array
+            .get(*value as usize)
+            .ok_or_else(|| anyhow!("form ID index not in form ID array: {}", value))?),
+        FormIdType::Default(value) => Ok(*value),
+        FormIdType::Created(value) => Ok(0xFF000000 | *value),
+        FormIdType::Unknown(_) => Err(anyhow!("encountered unknown form ID type")),
+    }
 }

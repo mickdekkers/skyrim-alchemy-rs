@@ -846,7 +846,7 @@ dependencies = [
 [[package]]
 name = "skyrim_savegame"
 version = "0.1.0"
-source = "git+https://github.com/Jupp56/skyrim_savegame?rev=1f3aa96c8e0dfc22a6ebaf53261395854988e8a5#1f3aa96c8e0dfc22a6ebaf53261395854988e8a5"
+source = "git+https://github.com/mickdekkers/skyrim_savegame?branch=fix/ref-id-parsing#c168c003d1e9fa2ecf8b933cb3a399cf28f78cf1"
 dependencies = [
  "anyhow",
  "flate2",
