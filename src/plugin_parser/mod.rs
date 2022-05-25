@@ -27,13 +27,15 @@ pub fn parse_plugin<'a>(
     plugin_name: &str,
     game_plugins_path: &Path,
 ) -> Result<(Vec<Ingredient>, Vec<MagicEffect>), anyhow::Error> {
+    log::trace!("Parsing plugin {}", plugin_name);
+
     let (remaining_input, header_record) =
         Record::parse(input, esplugin::GameId::SkyrimSE, false).map_err(nom_err_to_anyhow_err)?;
 
-    // println!("header_record: {:#?}", header_record);
+    log::trace!("Plugin header_record: {:#?}", header_record);
 
     const COUNT_OFFSET: usize = 4;
-    let _record_and_group_count = header_record
+    let record_and_group_count = header_record
         .subrecords()
         .iter()
         .find(|s| s.subrecord_type() == b"HEDR" && s.data().len() > COUNT_OFFSET)
@@ -50,9 +52,8 @@ pub fn parse_plugin<'a>(
 
     let is_localized = (header_record.header().flags() & 0x80) != 0;
 
-    println!("plugin name: {:?}", plugin_name);
-    // println!("masters: {:#?}", masters);
-    println!("is_localized: {:?}", is_localized);
+    log::trace!("Plugin masters: {:#?}", masters);
+    log::trace!("Plugin is_localized: {:?}", is_localized);
 
     let strings_table = match is_localized {
         true => StringsTable::new(plugin_name, game_plugins_path),
@@ -70,7 +71,10 @@ pub fn parse_plugin<'a>(
         } else if mod_id < num_masters {
             Some(masters[mod_id].clone())
         } else {
-            // TODO: add logging
+            log::error!(
+                "Invalid plugin: could not find master for form ID {:x}",
+                form_id
+            );
             None
         }
     };
@@ -78,8 +82,10 @@ pub fn parse_plugin<'a>(
     let parse_lstring =
         |data: &[u8]| -> String { parse_lstring(data, is_localized, &strings_table) };
 
-    // println!("record_and_group_count: {:#?}", record_and_group_count);
-    // let (input2, record_ids) = parse_record_ids(input1, game_id, &header_record, filename)?;
+    log::trace!(
+        "Plugin record_and_group_count: {:?}",
+        record_and_group_count
+    );
 
     // We're only interested in ingredients and magic effects.
     let skip_group_records = |label| !matches!(&label, b"INGR" | b"MGEF");
@@ -94,15 +100,6 @@ pub fn parse_plugin<'a>(
         }
         input1 = input2;
     }
-
-    // println!("interesting_groups: {:#?}", interesting_groups);
-    // println!("interesting_groups length: {:#?}", interesting_groups.len());
-
-    interesting_groups.iter().for_each(|ig| {
-        let _label = parse_string(&ig.header.label);
-        let _num_records = ig.group_records.len();
-        // println!("Group {:?} has {:?} records.", label, num_records);
-    });
 
     // Note: we are assuming there is at most one group per group type in each plugin
     let ingredient_group = interesting_groups
@@ -119,14 +116,16 @@ pub fn parse_plugin<'a>(
                 .filter_map(|rec| {
                     match rec {
                         group::GroupRecord::Group(_) => {
-                            // TODO: add logging
-                            // Unexpected subgroup, AFAICT ingredient groups don't have subgroups
+                            // AFAICT ingredient groups don't have subgroups
+                            log::warn!("Found unexpected subgroup in INGR group, ignoring");
                             None
                         }
                         group::GroupRecord::Record(rec) => {
                             if &rec.header_type() != b"INGR" {
-                                // TODO: add logging
                                 // Unexpected non-ingredient record
+                                log::warn!(
+                                    "Found unexpected non-INGR record in INGR group, ignoring"
+                                );
                                 None
                             } else {
                                 Some(rec)
@@ -141,13 +140,13 @@ pub fn parse_plugin<'a>(
                 });
 
             if !errors.is_empty() {
-                println!(
+                log::error!(
                     "Failed to parse {} ingredients records: {:#?}",
                     errors.len(),
                     errors
                 );
             }
-            // println!("Ingredients: {:#?}", ingredients);
+
             ingredients
         } else {
             Vec::new()
@@ -166,14 +165,16 @@ pub fn parse_plugin<'a>(
                 .filter_map(|rec| {
                     match rec {
                         group::GroupRecord::Group(_) => {
-                            // TODO: add logging
-                            // Unexpected subgroup, AFAICT magic effect groups don't have subgroups
+                            // AFAICT magic effect groups don't have subgroups
+                            log::warn!("Found unexpected subgroup in MGEF group, ignoring");
                             None
                         }
                         group::GroupRecord::Record(rec) => {
                             if &rec.header_type() != b"MGEF" {
-                                // TODO: add logging
                                 // Unexpected non-magic effect record
+                                log::warn!(
+                                    "Found unexpected non-MGEF record in MGEF group, ignoring"
+                                );
                                 None
                             } else {
                                 Some(rec)
@@ -188,32 +189,18 @@ pub fn parse_plugin<'a>(
                 });
 
             if !errors.is_empty() {
-                println!(
+                log::error!(
                     "Failed to parse {} magic effects records: {:#?}",
                     errors.len(),
                     errors
                 );
             }
-            // println!("Magic effects: {:#?}", magic_effects);
+
             magic_effects
         } else {
             Vec::new()
         }
     };
 
-    // TODO: convert to more useful representation
-
-    // println!(
-    //     "first group label: {:#?}",
-    //     record_type_to_string(&first_group.header.label)
-    // );
-    // first_group.header.label
-    // Ok((
-    //     input2,
-    //     PluginData {
-    //         header_record,
-    //         record_ids,
-    //     },
-    // ))
     Ok((ingredients, magic_effects))
 }

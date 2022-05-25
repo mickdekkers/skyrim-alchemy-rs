@@ -55,7 +55,7 @@ impl PotionsList {
             .sorted_by_key(|ig| &ig.name)
             .combinations(2)
             .collect();
-        println!(
+        log::debug!(
             "Found {} possible 2-ingredient combos (in {:?})",
             combos_2.len(),
             start.elapsed()
@@ -72,7 +72,7 @@ impl PotionsList {
                 a.shares_effects_with(b)
             })
             .collect();
-        println!(
+        log::debug!(
             "Found {} valid 2-ingredient combos (in {:?})",
             valid_combos_2.len(),
             start.elapsed()
@@ -89,7 +89,7 @@ impl PotionsList {
             .collect();
         potions_2.sort_by_key(|pot| pot.get_gold_value());
         potions_2.reverse();
-        println!(
+        log::debug!(
             "Created {} Potion instances (in {:?})",
             potions_2.len(),
             start.elapsed()
@@ -111,7 +111,7 @@ impl PotionsList {
             .sorted_by_key(|ig| &ig.name)
             .combinations(3)
             .collect();
-        println!(
+        log::debug!(
             "Found {} possible 3-ingredient combos (in {:?})",
             combos_3.len(),
             start.elapsed()
@@ -130,7 +130,7 @@ impl PotionsList {
                     || (a.shares_effects_with(c) && b.shares_effects_with(c))
             })
             .collect();
-        println!(
+        log::debug!(
             "Found {} valid 3-ingredient combos (in {:?})",
             valid_combos_3.len(),
             start.elapsed()
@@ -147,7 +147,7 @@ impl PotionsList {
             .collect();
         potions_3.sort_by_key(|pot| pot.get_gold_value());
         potions_3.reverse();
-        println!(
+        log::debug!(
             "Created {} Potion instances (in {:?})",
             potions_3.len(),
             start.elapsed()

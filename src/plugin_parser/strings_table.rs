@@ -73,14 +73,14 @@ fn find_strings_file(plugin_name: &str, game_plugins_path: &Path) -> Option<Stri
     let bsa_path = game_plugins_path.join(get_bsa_name(plugin_name));
 
     let mut bsa: bsa::SomeReaderV10X<_> = bsa::open(&bsa_path)
-        .map_err(|err| println!("error opening bsa: {:?}", err))
+        .map_err(|err| log::error!("failed to open bsa: {:?}", err))
         .ok()?;
 
     let (dir_name_in_bsa, file_name_in_bsa) = strings_path.split_once('/')?;
 
     let bsa_dirs_list = bsa
         .list()
-        .map_err(|err| println!("error listing bsa dirs: {:?}", err))
+        .map_err(|err| log::error!("failed to list bsa dirs: {:?}", err))
         .ok()?;
 
     let dir_in_bsa = bsa_dirs_list.iter().find(|dir| {
@@ -170,7 +170,7 @@ impl StringsTable {
 
     pub fn get(&self, id: u32) -> Option<String> {
         self.load()
-            .map_err(|err| println!("failed to load strings table: {:?}", err))
+            .map_err(|err| log::error!("failed to load strings table: {:?}", err))
             .ok()?;
 
         let directory = self.directory.borrow();

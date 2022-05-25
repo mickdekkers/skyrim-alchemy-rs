@@ -92,7 +92,11 @@ where
         .iter()
         .find(|s| s.subrecord_type() == b"DNAM")
         .or_else(|| {
-            println!("Record is missing description");
+            log::warn!(
+                "Magic effect record is missing description: {}:{}",
+                mod_name,
+                editor_id
+            );
             None
         })
         .map(|s| parse_lstring(s.data()))

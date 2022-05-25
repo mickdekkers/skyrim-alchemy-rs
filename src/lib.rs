@@ -1,16 +1,12 @@
 #![feature(hash_drain_filter)]
 
 use anyhow::{anyhow, Context};
-use arrayvec::ArrayVec;
-use itertools::Itertools;
 use lazy_static::lazy_static;
-use potion::Potion;
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::fs::File;
+use std::io::Write;
 use std::path::PathBuf;
-use std::time::Instant;
 
 use crate::plugin_parser::{
     form_id::FormIdContainer, ingredient::Ingredient, magic_effect::MagicEffect,
@@ -32,8 +28,10 @@ fn gimme_load_order() -> Result<Vec<String>, anyhow::Error> {
     let mut load_order = game_settings.into_load_order();
     // Read load order file contents
     load_order.load()?;
-    // let plugins_file_path = load_order.game_settings().active_plugins_file().clone().into_os_string().into_string().unwrap();
-    // println!("plugins file path: {:?}", plugins_file_path);
+    log::debug!(
+        "plugins file path: {:?}",
+        load_order.game_settings().active_plugins_file()
+    );
     let active_plugin_names = load_order.active_plugin_names();
     Ok(active_plugin_names.iter().map(|&s| s.into()).collect())
 }
@@ -70,11 +68,13 @@ fn load_ingredients_and_effects_from_plugins(
 
         let plugin_file = File::open(&plugin_path)?;
         // TODO: implement better (safer, streaming) file loading
-        let plugin_mmap = unsafe { memmap::MmapOptions::new().map(&plugin_file)? };
+        dbg!("b4 plugin_mmap");
+        let plugin_mmap = unsafe { memmap2::MmapOptions::new().map(&plugin_file)? };
+        dbg!("got plugin_mmap");
         let (plugin_ingredients, plugin_magic_effects) =
             plugin_parser::parse_plugin(&plugin_mmap, plugin_name, &GAME_PLUGINS_PATH)?;
 
-        println!(
+        log::debug!(
             "Plugin {:?} has {:?} ingredients and {:?} magic effects.",
             plugin_name,
             plugin_ingredients.len(),
@@ -103,13 +103,13 @@ fn load_ingredients_and_effects_from_plugins(
 
     // Remove from the magic effects all those that are not used by ingredients
 
-    println!("Number of ingredients: {}", ingredients.len());
-    println!(
+    log::debug!("Number of ingredients: {}", ingredients.len());
+    log::debug!(
         "Number of magic effects before filtering: {}",
         magic_effects.len()
     );
     magic_effects.drain_filter(|key, _| !ingredient_effect_ids.contains(key));
-    println!(
+    log::debug!(
         "Number of magic effects after filtering: {}",
         magic_effects.len()
     );
@@ -128,30 +128,36 @@ fn load_ingredients_and_effects_from_plugins(
 }
 
 pub fn do_the_thing() -> Result<(), anyhow::Error> {
-    let _save_file = gimme_save_file()?;
-    // println!("{:#?}", save_file);
+    let save_file = gimme_save_file()?;
+    log::info!("{:#?}", save_file);
     let load_order = gimme_load_order()?;
-    // println!("Load order:\n{:#?}", &load_order);
+    log::debug!("Load order:\n{:#?}", &load_order);
     let (ingredients, magic_effects) = load_ingredients_and_effects_from_plugins(&load_order)?;
 
-    let serialized_ingredients =
-        serde_json::to_string_pretty(&ingredients.values().collect_vec()).unwrap();
-    let serialized_magic_effects =
-        serde_json::to_string_pretty(&magic_effects.values().collect_vec()).unwrap();
+    // let serialized_ingredients =
+    //     serde_json::to_string_pretty(&ingredients.values().collect_vec()).unwrap();
+    // let serialized_magic_effects =
+    //     serde_json::to_string_pretty(&magic_effects.values().collect_vec()).unwrap();
 
-    fs::write("data/ingredients.json", serialized_ingredients)?;
-    fs::write("data/magic_effects.json", serialized_magic_effects)?;
+    // fs::write("data/ingredients.json", serialized_ingredients)?;
+    // fs::write("data/magic_effects.json", serialized_magic_effects)?;
 
     let potions_list = PotionsList::build(ingredients, magic_effects);
 
-    println!();
-
     potions_list
         .get_potions()
+        .filter(|p| {
+            p.ingredients.iter().all(|ig| {
+                matches!(
+                    ig.name.as_deref(),
+                    Some("Lavender") | Some("Hanging Moss") | Some("Blue Mountain Flower")
+                )
+            })
+        })
         .take(100)
-        .for_each(|p| println!("{}\n", p));
+        .for_each(|p| log::info!("{}\n", p));
 
-    // TODO: filter Potion instances down to remove ingredients that the player doesn't have (but keep all the Potion instances around if filtering is faster than recalculating (around 1.5s))
+    // TODO: filter PotionsList to include only ingredients that the player has
 
     Ok(())
 }
