@@ -15,9 +15,11 @@ use std::time::Instant;
 use crate::plugin_parser::{
     form_id::FormIdContainer, ingredient::Ingredient, magic_effect::MagicEffect,
 };
+use crate::potions_list::PotionsList;
 
 mod plugin_parser;
 mod potion;
+mod potions_list;
 
 lazy_static! {
     static ref GAME_PATH: PathBuf =
@@ -140,70 +142,16 @@ pub fn do_the_thing() -> Result<(), anyhow::Error> {
     fs::write("data/ingredients.json", serialized_ingredients)?;
     fs::write("data/magic_effects.json", serialized_magic_effects)?;
 
-    // TODO: sort ingredients by name
-
-    let mut test_potion_ingredients = ArrayVec::<&Ingredient, 3>::new();
-    // Wheat
-    test_potion_ingredients.push(ingredients.get(&("Skyrim.esm".into(), 307386)).unwrap());
-    // Giant's Toe
-    test_potion_ingredients.push(ingredients.get(&("Skyrim.esm".into(), 240996)).unwrap());
-
-    let test_potion = Potion::from_ingredients(&test_potion_ingredients, &magic_effects);
-
-    println!("Test potion:\n{}", test_potion.unwrap());
-
-    // Note: temporarily storing the combinations and then using par_iter is about twice as fast as
-    // using par_bridge directly on the combinations iterator (at the cost of some ram)
-    let start = Instant::now();
-    let combos_3: Vec<_> = ingredients.values().combinations(3).collect();
-    println!(
-        "Found {} possible 3-ingredient combos (in {:?})",
-        combos_3.len(),
-        start.elapsed()
-    );
-
-    let start = Instant::now();
-    let valid_combos_3: Vec<_> = combos_3
-        .par_iter()
-        .filter(|combo| {
-            let a = combo.get(0).unwrap();
-            let b = combo.get(1).unwrap();
-            let c = combo.get(2).unwrap();
-
-            // Ensure all three ingredients share an effect with at least one of the others
-            (a.shares_effects_with(b) && (c.shares_effects_with(a) || c.shares_effects_with(b)))
-                || (a.shares_effects_with(c) && b.shares_effects_with(c))
-        })
-        .collect();
-    println!(
-        "Found {} valid 3-ingredient combos (in {:?})",
-        valid_combos_3.len(),
-        start.elapsed()
-    );
-
-    let start = Instant::now();
-    let mut potions_3: Vec<_> = valid_combos_3
-        .par_iter()
-        .map(|combo| {
-            let ingredients = ArrayVec::<_, 3>::from_iter(combo.iter().copied());
-            Potion::from_ingredients(&ingredients, &magic_effects)
-                .expect("ingredients combo should be valid Potion")
-        })
-        .collect();
-    potions_3.sort_by_key(|pot| pot.get_gold_value());
-    potions_3.reverse();
-    println!(
-        "Created {} Potion instances (in {:?})",
-        potions_3.len(),
-        start.elapsed()
-    );
+    let potions_list = PotionsList::build(ingredients, magic_effects);
 
     println!();
 
-    println!(
-        "Top 10 potions with 3 ingredients:\n\n{}",
-        potions_3.iter().take(10).join("\n\n")
-    );
+    potions_list
+        .get_potions()
+        .take(100)
+        .for_each(|p| println!("{}\n", p));
+
+    // TODO: filter Potion instances down to remove ingredients that the player doesn't have (but keep all the Potion instances around if filtering is faster than recalculating (around 1.5s))
 
     Ok(())
 }

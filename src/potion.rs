@@ -159,9 +159,7 @@ impl<'a> Display for Potion<'a> {
             self.ingredients
                 .iter()
                 .map(|ig| String::from("- ")
-                    + ig.name
-                        .as_ref()
-                        .unwrap_or(&"<MISSING_INGREDIENT_NAME>".into()))
+                    + ig.name.as_deref().unwrap_or("<MISSING_INGREDIENT_NAME>"))
                 .join("\n")
         )
     }

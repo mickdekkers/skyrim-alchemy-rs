@@ -2,3 +2,4 @@
 *.ess
 *.skse
 /data/*.json
+/data/*.txt
