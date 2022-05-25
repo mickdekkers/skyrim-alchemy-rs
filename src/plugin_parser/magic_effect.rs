@@ -70,7 +70,7 @@ where
     let form_id = record
         .header()
         .form_id()
-        .ok_or_else(|| anyhow!("Magic effect record has no form ID"))?;
+        .ok_or_else(|| anyhow!("Magic effect record has no form ID: {:#?}", record))?;
 
     let (mod_name, id) = split_form_id(form_id, &get_master)?;
 
@@ -78,7 +78,13 @@ where
         .subrecords()
         .iter()
         .find(|s| s.subrecord_type() == b"EDID")
-        .ok_or_else(|| anyhow!("Record is missing editor ID"))
+        .ok_or_else(|| {
+            anyhow!(
+                "Magic effect record is missing editor ID: {}:{}",
+                mod_name,
+                id
+            )
+        })
         .map(|s| parse_zstring(s.data()))?;
 
     let full_name = record
@@ -108,12 +114,23 @@ where
             .subrecords()
             .iter()
             .find(|s| s.subrecord_type() == b"DATA")
-            .ok_or_else(|| anyhow!("Record is missing data"))
+            .ok_or_else(|| {
+                anyhow!(
+                    "Magic effect record is missing data: {}:{}",
+                    mod_name,
+                    editor_id
+                )
+            })
             .map(|s| {
                 nom::sequence::pair(le_u32, le_f32)(s.data())
                     .map(|d| d.1)
                     .map_err(|err: nom::Err<(_, ErrorKind)>| {
-                        anyhow!("error parsing ingredient effects: {}", err.to_string())
+                        anyhow!(
+                            "Error parsing flags and base cost of magic effect record {}:{}: {}",
+                            mod_name,
+                            editor_id,
+                            err.to_string()
+                        )
                     })
             })??
     };

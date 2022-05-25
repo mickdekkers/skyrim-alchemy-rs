@@ -223,8 +223,6 @@ impl<'a> Potion<'a> {
             return Err(PotionCraftError::InvalidIngredient(ing_with_dup_effects));
         }
 
-        // TODO: somehow provide feedback about which ingredients were used? Since you can brew perfectly valid potions with 3 ingredients where only 2 have a shared effect and the third does not contribute
-
         let ingredients_effects = ingredients
             .iter()
             .flat_map(|ig| ig.effects.iter())

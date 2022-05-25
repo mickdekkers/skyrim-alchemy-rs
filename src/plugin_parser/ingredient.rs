@@ -102,7 +102,7 @@ impl FormIdContainer for IngredientEffect {
     }
 }
 
-fn ingredient<'a, FnGetMaster, FnParseLstring>(
+fn ingredient<FnGetMaster, FnParseLstring>(
     record: &Record,
     get_master: FnGetMaster,
     parse_lstring: FnParseLstring,
@@ -116,7 +116,7 @@ where
     let form_id = record
         .header()
         .form_id()
-        .ok_or_else(|| anyhow!("Ingredient record has no form ID"))?;
+        .ok_or_else(|| anyhow!("Ingredient record has no form ID: {:#?}", record))?;
 
     let (mod_name, id) = split_form_id(form_id, &get_master)?;
 
@@ -125,7 +125,13 @@ where
         .iter()
         .find(|s| s.subrecord_type() == b"EDID")
         .map(|s| parse_zstring(s.data()))
-        .ok_or_else(|| anyhow!("Record is missing editor ID"))?;
+        .ok_or_else(|| {
+            anyhow!(
+                "Ingredient record is missing editor ID: {}:{}",
+                mod_name,
+                id
+            )
+        })?;
 
     let full_name = record
         .subrecords()
@@ -144,13 +150,17 @@ where
         .skip(1)
     {
         match sr.subrecord_type() {
-            // TODO: do we need/want to get_master for this form ID?
             b"EFID" => current_effect_id = Some(le_slice_to_u32(sr.data())),
             b"EFIT" => {
                 if let Some(efid) = current_effect_id {
                     let (magnitude, duration) = separated_pair(le_f32, le_u32, le_u32)(sr.data())
                         .map_err(|err: nom::Err<(_, ErrorKind)>| {
-                            anyhow!("error parsing ingredient effects: {}", err.to_string())
+                            anyhow!(
+                                "Error parsing effects of ingredient record {}:{}: {}",
+                                mod_name,
+                                editor_id,
+                                err.to_string()
+                            )
                         })?
                         .1;
 
@@ -165,15 +175,17 @@ where
                         magnitude,
                     });
                 } else {
-                    Err(anyhow!("EFIT appeared before EFID"))?
+                    Err(anyhow!(
+                        "Error parsing effects of ingredient record {}:{}: EFIT appeared before EFID",
+                        mod_name,
+                        editor_id
+                    ))?
                 }
                 current_effect_id = None;
             }
             _ => (),
         }
     }
-
-    // TODO: when merging ingredients lists from multiple plugins, do this https://github.com/cguebert/SkyrimAlchemyHelper/blob/7904e2bcfe5d6561652928bd815213a1e0ba95e8/libs/modParser/ConfigParser.cpp#L118
 
     // Sort to make later usage more optimized
     effects.sort_by_key(|eff| eff.get_form_id_pair());

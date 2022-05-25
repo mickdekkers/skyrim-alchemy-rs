@@ -68,9 +68,7 @@ fn load_ingredients_and_effects_from_plugins(
 
         let plugin_file = File::open(&plugin_path)?;
         // TODO: implement better (safer, streaming) file loading
-        dbg!("b4 plugin_mmap");
         let plugin_mmap = unsafe { memmap2::MmapOptions::new().map(&plugin_file)? };
-        dbg!("got plugin_mmap");
         let (plugin_ingredients, plugin_magic_effects) =
             plugin_parser::parse_plugin(&plugin_mmap, plugin_name, &GAME_PLUGINS_PATH)?;
 
