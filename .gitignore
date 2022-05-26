@@ -3,3 +3,4 @@
 *.skse
 /data/*.json
 /data/*.txt
+*.log

@@ -3,12 +3,14 @@
 use anyhow::{anyhow, Context};
 use lazy_static::lazy_static;
 use log_err::{LogErrOption, LogErrResult};
-use skyrim_savegame::{ChangeForm, FormIdType, SaveFile};
+use nom::IResult;
+use skyrim_savegame::{read_vsval_to_u32, ChangeForm, FormIdType, SaveFile, VSVal};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::fs::File;
 use std::path::PathBuf;
 
+use crate::plugin_parser::utils::nom_err_to_anyhow_err;
 use crate::plugin_parser::{
     form_id::FormIdContainer, ingredient::Ingredient, magic_effect::MagicEffect,
 };
@@ -177,6 +179,75 @@ pub fn do_the_thing() -> Result<(), anyhow::Error> {
 
     dbg!(player_change_form);
 
+    // See https://en.uesp.net/wiki/Skyrim_Mod:ChangeFlags#Initial_type
+    // Note: assumes ACHR change form type
+    let initial_type: u32 = {
+        if matches!(player_change_form.form_id, FormIdType::Created(_)) {
+            5
+            // CHANGE_REFR_PROMOTED or CHANGE_REFR_CELL_CHANGED flags
+        } else if player_change_form.change_flags & 0x02000000 != 0
+            || player_change_form.change_flags & 0x00000008 != 0
+        {
+            6
+            // CHANGE_REFR_HAVOK_MOVE or CHANGE_REFR_MOVE flags
+        } else if player_change_form.change_flags & 0x00000004 != 0
+            || player_change_form.change_flags & 0x00000002 != 0
+        {
+            4
+        } else {
+            0
+        }
+    };
+    let initial_type_size: u32 = match initial_type {
+        0 => 0,
+        1 => 8,
+        2 => 10,
+        3 => 4,
+        4 => 27,
+        5 => 31,
+        6 => 34,
+        other => panic!("unknown initial type {}", other),
+    };
+
+    let (remaining_data, _) = nom::sequence::tuple((
+        nom::combinator::cond(
+            initial_type_size != 0,
+            // Skip initial data
+            nom::bytes::complete::take::<_, &[u8], nom::error::Error<_>>(initial_type_size),
+        ),
+        nom::combinator::cond(
+            // CHANGE_REFR_HAVOK_MOVE flag
+            player_change_form.change_flags & 0x00000004 != 0,
+            // Skip havok data
+            nom::multi::length_count(read_vsval, nom::number::complete::le_u8),
+        ),
+        // Skip unknown integer + unknown data
+        nom::bytes::complete::take(std::mem::size_of::<u32>() + std::mem::size_of::<u8>() * 4),
+        nom::combinator::cond(
+            // CHANGE_FORM_FLAGS flag
+            player_change_form.change_flags & 0x00000001 != 0,
+            // Skip flag + unknown
+            nom::bytes::complete::take(std::mem::size_of::<u32>() + std::mem::size_of::<u16>()),
+        ),
+        nom::combinator::cond(
+            // CHANGE_REFR_BASEOBJECT flag
+            player_change_form.change_flags & 0x00000080 != 0,
+            // Skip base object ref ID
+            nom::bytes::complete::take(3usize),
+        ),
+        nom::combinator::cond(
+            // CHANGE_REFR_SCALE flag
+            player_change_form.change_flags & 0x00000010 != 0,
+            // Skip scale float
+            nom::number::complete::le_f32,
+        ),
+        // TODO: extra data 😅
+        // TODO: should probably just match on the data type and panic if unknown, then iterate by adding parsers till it fully parses the player change form. Also look at the flags, they seem to (mostly) correspond to extra data types. Hopefully 🤞 we won't run into any extra data types whose lengths are unknown...
+
+        // TODO: inventory
+    ))(player_change_form.data.as_ref())
+    .map_err(nom_err_to_anyhow_err)?;
+
     Ok(())
 }
 
@@ -203,5 +274,35 @@ fn get_real_form_id(raw_form_id: &FormIdType, save_file: &SaveFile) -> Result<u3
         FormIdType::Default(value) => Ok(*value),
         FormIdType::Created(value) => Ok(0xFF000000 | *value),
         FormIdType::Unknown(_) => Err(anyhow!("encountered unknown form ID type")),
+    }
+}
+
+/// Reads a vsval to u32. If it has an invalid size indicator, returns 0
+pub fn read_vsval(input: &[u8]) -> IResult<&[u8], u32> {
+    let (input, first_byte) = nom::number::complete::le_u8(input)?;
+    let val_type_enc = first_byte & 0b00000011;
+    match val_type_enc {
+        0 => Ok((input, ((first_byte & 0b11111100) >> 2) as u32)),
+        1 => {
+            let first_byte = first_byte as u16;
+            let (input, second_byte) = nom::number::complete::le_u8(input)?;
+            Ok((
+                input,
+                (((second_byte as u16) << 8 ^ first_byte) >> 2) as u32,
+            ))
+        }
+        2 => {
+            let first_byte = first_byte as u32;
+            let (input, second_byte) = nom::number::complete::le_u8(input)?;
+            let (input, third_byte) = nom::number::complete::le_u8(input)?;
+            Ok((
+                input,
+                (((third_byte as u32) << 16 ^ (second_byte as u32) << 8 ^ first_byte) >> 2),
+            ))
+        }
+        _ => {
+            log::error!("Found invalid vsval!");
+            Ok((input, 0))
+        }
     }
 }
