@@ -1,4 +1,5 @@
 use ouroboros::self_referencing;
+use serde::{ser::SerializeStruct, Serialize, Serializer};
 use std::{collections::HashMap, time::Instant};
 
 use arrayvec::ArrayVec;
@@ -20,6 +21,18 @@ pub struct PotionsList {
     #[borrows(ingredients, magic_effects)]
     #[covariant]
     potions_3: Vec<Potion<'this>>,
+}
+
+impl Serialize for PotionsList {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut pl = serializer.serialize_struct("", 2)?;
+        pl.serialize_field("potions_2", self.borrow_potions_2())?;
+        pl.serialize_field("potions_3", self.borrow_potions_3())?;
+        pl.end()
+    }
 }
 
 // Goal: be able to be updated based on player inventory (game files updates will just need a restart)

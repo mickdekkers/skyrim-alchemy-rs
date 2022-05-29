@@ -9,6 +9,7 @@ use crate::plugin_parser::{
     ingredient::{Ingredient, IngredientEffect},
     magic_effect::MagicEffect,
 };
+use serde::{ser::SerializeSeq, Serialize, Serializer};
 
 /// Minimum number of ingredients per potion
 const MIN_INGREDIENTS: usize = 2;
@@ -19,13 +20,48 @@ const MAX_INGREDIENTS: usize = 3;
 // TODO: read player alchemy skill and game settings to get real values (still excluding perks because mods)
 const EFFECT_POWER_FACTOR: f32 = 6.0;
 
+// TODO: make generic over FormIdContainer trait
+fn ser_magic_effect_form_id<S>(x: &MagicEffect, s: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    s.serialize_u32(x.form_id)
+}
+
+fn ser_ingredients_vec<S>(x: &Vec<&Ingredient>, s: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    let mut seq = s.serialize_seq(Some(x.len()))?;
+    for item in x {
+        seq.serialize_element(&item.form_id)?;
+    }
+    seq.end()
+}
+
+fn ser_once_cell_u32<S>(x: &OnceCell<u32>, s: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    // TODO: would be much nicer if we could call the getter here.
+    s.serialize_u32(
+        *x.get()
+            .expect("OnceCell must be filled before serialization"),
+    )
+}
+
 /// This is basically an `IngredientEffect` with some extra data + a ref to its `MagicEffect`
+#[derive(Debug, Serialize)]
 pub struct PotionEffect<'a> {
+    #[serde(serialize_with = "ser_magic_effect_form_id")]
     pub magic_effect: &'a MagicEffect,
     base_magnitude: f32,
     base_duration: u32,
+    #[serde(serialize_with = "ser_once_cell_u32")]
     magnitude: OnceCell<u32>,
+    #[serde(serialize_with = "ser_once_cell_u32")]
     duration: OnceCell<u32>,
+    #[serde(serialize_with = "ser_once_cell_u32")]
     gold_value: OnceCell<u32>,
 }
 
@@ -141,10 +177,13 @@ impl<'a> FormIdContainer for PotionEffect<'a> {
     }
 }
 
+#[derive(Debug, Serialize)]
 pub struct Potion<'a> {
+    #[serde(serialize_with = "ser_ingredients_vec")]
     pub ingredients: Vec<&'a Ingredient>,
     /// Potion's effects sorted by strength descending
     pub effects: Vec<PotionEffect<'a>>,
+    #[serde(serialize_with = "ser_once_cell_u32")]
     gold_value: OnceCell<u32>,
 }
 
@@ -229,7 +268,7 @@ impl<'a> Potion<'a> {
             .sorted_by_key(|igef| igef.get_form_id_pair_ref())
             .collect_vec();
 
-        assert!(ingredients_effects.len() == ingredients.len() * 4);
+        // assert_eq!(ingredients_effects.len(), ingredients.len() * 4);
 
         let ingredients_effects_counts = ingredients_effects
             .iter()
