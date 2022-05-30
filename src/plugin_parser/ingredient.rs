@@ -63,12 +63,8 @@ impl FormIdContainer for Ingredient {
         self.form_id
     }
 
-    fn get_form_id_pair(&self) -> super::form_id::FormIdPair {
-        (self.mod_name.clone(), self.id)
-    }
-
-    fn get_form_id_pair_ref(&self) -> super::form_id::FormIdPairRef {
-        (self.mod_name.as_str(), self.id)
+    fn get_form_id_pair(&self) -> crate::plugin_parser::form_id::FormIdPair<&str> {
+        crate::plugin_parser::form_id::FormIdPair(self.mod_name.as_str(), self.id)
     }
 }
 
@@ -93,12 +89,8 @@ impl FormIdContainer for IngredientEffect {
         self.form_id
     }
 
-    fn get_form_id_pair(&self) -> super::form_id::FormIdPair {
-        (self.mod_name.clone(), self.id)
-    }
-
-    fn get_form_id_pair_ref(&self) -> super::form_id::FormIdPairRef {
-        (self.mod_name.as_str(), self.id)
+    fn get_form_id_pair(&self) -> super::form_id::FormIdPair<&str> {
+        super::form_id::FormIdPair(self.mod_name.as_str(), self.id)
     }
 }
 
@@ -188,7 +180,7 @@ where
     }
 
     // Sort to make later usage more optimized
-    effects.sort_by_key(|eff| eff.get_form_id_pair());
+    effects.sort_by_key(|eff| eff.get_form_id());
 
     Ok(Ingredient {
         form_id: u32::from(form_id),

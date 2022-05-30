@@ -50,21 +50,15 @@ fn gimme_save_file() -> Result<skyrim_savegame::SaveFile, anyhow::Error> {
 
 fn load_ingredients_and_effects_from_plugins(
     load_order: &Vec<String>,
-) -> Result<
-    (
-        HashMap<(String, u32), Ingredient>,
-        HashMap<(String, u32), MagicEffect>,
-    ),
-    anyhow::Error,
-> {
+) -> Result<(HashMap<u32, Ingredient>, HashMap<u32, MagicEffect>), anyhow::Error> {
     if load_order.is_empty() {
         Err(anyhow!("Load order empty!"))?
     }
 
     // TODO: use &str instead of String for keys
-    let mut magic_effects = HashMap::<(String, u32), MagicEffect>::new();
-    let mut ingredients = HashMap::<(String, u32), Ingredient>::new();
-    let mut ingredient_effect_ids = HashSet::<(String, u32)>::new();
+    let mut magic_effects = HashMap::<u32, MagicEffect>::new();
+    let mut ingredients = HashMap::<u32, Ingredient>::new();
+    let mut ingredient_effect_ids = HashSet::<u32>::new();
 
     for plugin_name in load_order.iter() {
         let plugin_path = GAME_PLUGINS_PATH.join(plugin_name);
@@ -84,7 +78,7 @@ fn load_ingredients_and_effects_from_plugins(
 
         for plugin_magic_effect in plugin_magic_effects.into_iter() {
             // Insert into magic effects hashmap, overwriting existing entry from previous plugins
-            magic_effects.insert(plugin_magic_effect.get_form_id_pair(), plugin_magic_effect);
+            magic_effects.insert(plugin_magic_effect.get_form_id(), plugin_magic_effect);
         }
 
         for plugin_ingredient in plugin_ingredients.into_iter() {
@@ -92,13 +86,13 @@ fn load_ingredients_and_effects_from_plugins(
             for plugin_ingredient_effect_id in plugin_ingredient
                 .effects
                 .iter()
-                .map(|eff| eff.get_form_id_pair())
+                .map(|eff| eff.get_form_id())
             {
                 ingredient_effect_ids.insert(plugin_ingredient_effect_id);
             }
 
             // Insert into magic effects hashmap, overwriting existing entry from previous plugins
-            ingredients.insert(plugin_ingredient.get_form_id_pair(), plugin_ingredient);
+            ingredients.insert(plugin_ingredient.get_form_id(), plugin_ingredient);
         }
     }
 
@@ -116,10 +110,7 @@ fn load_ingredients_and_effects_from_plugins(
     );
 
     // TODO: find way to avoid clone here (can't difference `&HashSet<(String, u32)>` and `&HashSet<&(String, u32)>)` because they're different types)
-    let mgef_keys = magic_effects
-        .keys()
-        .cloned()
-        .collect::<HashSet<(String, u32)>>();
+    let mgef_keys = magic_effects.keys().cloned().collect::<HashSet<u32>>();
 
     // TODO: if missing mgefs, identify which ingredients
     let num_missing_mgefs = ingredient_effect_ids.difference(&mgef_keys).count();

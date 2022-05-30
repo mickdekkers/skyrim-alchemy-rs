@@ -70,12 +70,12 @@ pub struct PotionEffect<'a> {
 impl<'a> PotionEffect<'a> {
     pub fn from_ingredient_effect(
         igef: &IngredientEffect,
-        all_magic_effects: &'a HashMap<(String, u32), MagicEffect>,
+        all_magic_effects: &'a HashMap<u32, MagicEffect>,
     ) -> Self {
         PotionEffect {
             base_duration: igef.duration,
             base_magnitude: igef.magnitude,
-            magic_effect: all_magic_effects.get(&igef.get_form_id_pair()).unwrap(),
+            magic_effect: all_magic_effects.get(&igef.get_form_id()).unwrap(),
             duration: OnceCell::new(),
             magnitude: OnceCell::new(),
             gold_value: OnceCell::new(),
@@ -168,12 +168,11 @@ impl<'a> FormIdContainer for PotionEffect<'a> {
         self.magic_effect.form_id
     }
 
-    fn get_form_id_pair(&self) -> crate::plugin_parser::form_id::FormIdPair {
-        (self.magic_effect.mod_name.clone(), self.magic_effect.id)
-    }
-
-    fn get_form_id_pair_ref(&self) -> crate::plugin_parser::form_id::FormIdPairRef<'a> {
-        (self.magic_effect.mod_name.as_str(), self.magic_effect.id)
+    fn get_form_id_pair(&self) -> crate::plugin_parser::form_id::FormIdPair<&str> {
+        crate::plugin_parser::form_id::FormIdPair(
+            self.magic_effect.mod_name.as_str(),
+            self.magic_effect.id,
+        )
     }
 }
 
@@ -242,7 +241,7 @@ impl<'a> Potion<'a> {
 
     pub fn from_ingredients(
         ingredients: &ArrayVec<&'a Ingredient, MAX_INGREDIENTS>,
-        all_magic_effects: &'a HashMap<(String, u32), MagicEffect>,
+        all_magic_effects: &'a HashMap<u32, MagicEffect>,
     ) -> Result<Self, PotionCraftError<'a>> {
         if ingredients.len() < MIN_INGREDIENTS {
             return Err(PotionCraftError::NotEnoughIngredients);
@@ -255,7 +254,7 @@ impl<'a> Potion<'a> {
         if let Some(ing_with_dup_effects) = ingredients.iter().find(|ig| {
             ig.effects
                 .iter()
-                .duplicates_by(|igef| igef.get_form_id_pair_ref())
+                .duplicates_by(|igef| igef.get_form_id())
                 .count()
                 > 0
         }) {
@@ -265,14 +264,14 @@ impl<'a> Potion<'a> {
         let ingredients_effects = ingredients
             .iter()
             .flat_map(|ig| ig.effects.iter())
-            .sorted_by_key(|igef| igef.get_form_id_pair_ref())
+            .sorted_by_key(|igef| igef.get_form_id())
             .collect_vec();
 
         // assert_eq!(ingredients_effects.len(), ingredients.len() * 4);
 
         let ingredients_effects_counts = ingredients_effects
             .iter()
-            .counts_by(|igef| igef.get_form_id_pair_ref());
+            .counts_by(|igef| igef.get_form_id());
 
         if ingredients_effects_counts.values().all(|count| *count < 2) {
             return Err(PotionCraftError::NoSharedEffects);
@@ -281,15 +280,10 @@ impl<'a> Potion<'a> {
         // active effects are those that appear in more than one ingredient
         let active_effects = ingredients_effects
             .iter()
-            .filter(|igef| {
-                *(ingredients_effects_counts
-                    .get(&igef.get_form_id_pair_ref())
-                    .unwrap())
-                    > 1
-            })
+            .filter(|igef| *(ingredients_effects_counts.get(&igef.get_form_id()).unwrap()) > 1)
             .map(|igef| PotionEffect::from_ingredient_effect(igef, all_magic_effects))
             .coalesce(|potef1, potef2| {
-                if potef1.get_form_id_pair_ref() == potef2.get_form_id_pair_ref() {
+                if potef1.get_form_id() == potef2.get_form_id() {
                     // Select most valuable (strongest) version of each effect
                     Ok({
                         if potef1.get_gold_value() >= potef2.get_gold_value() {

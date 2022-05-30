@@ -45,12 +45,8 @@ impl FormIdContainer for MagicEffect {
         self.form_id
     }
 
-    fn get_form_id_pair(&self) -> super::form_id::FormIdPair {
-        (self.mod_name.clone(), self.id)
-    }
-
-    fn get_form_id_pair_ref(&self) -> super::form_id::FormIdPairRef {
-        (self.mod_name.as_str(), self.id)
+    fn get_form_id_pair(&self) -> super::form_id::FormIdPair<&str> {
+        super::form_id::FormIdPair(self.mod_name.as_str(), self.id)
     }
 }
 

@@ -13,8 +13,8 @@ use crate::{
 
 #[self_referencing]
 pub struct PotionsList {
-    ingredients: HashMap<(String, u32), Ingredient>,
-    magic_effects: HashMap<(String, u32), MagicEffect>,
+    ingredients: HashMap<u32, Ingredient>,
+    magic_effects: HashMap<u32, MagicEffect>,
     #[borrows(ingredients, magic_effects)]
     #[covariant]
     potions_2: Vec<Potion<'this>>,
@@ -42,8 +42,8 @@ impl PotionsList {
     /// Note: the ingredients and magic effects hashmaps should include all those that exist in the
     /// game. Filtering the `PotionsList` can be done after construction.
     pub fn build(
-        ingredients: HashMap<(String, u32), Ingredient>,
-        magic_effects: HashMap<(String, u32), MagicEffect>,
+        ingredients: HashMap<u32, Ingredient>,
+        magic_effects: HashMap<u32, MagicEffect>,
     ) -> Self {
         Self::new(
             // TODO: check data validity?
@@ -57,8 +57,8 @@ impl PotionsList {
 
     /// Compute the Vec of potions with 2 ingredients
     fn get_potions_2<'a>(
-        ingredients: &'a HashMap<(String, u32), Ingredient>,
-        magic_effects: &'a HashMap<(String, u32), MagicEffect>,
+        ingredients: &'a HashMap<u32, Ingredient>,
+        magic_effects: &'a HashMap<u32, MagicEffect>,
     ) -> Vec<Potion<'a>> {
         // Note: temporarily storing the combinations and then using par_iter is about twice as
         // fast as using par_bridge directly on the combinations iterator (at the cost of some ram)
@@ -113,8 +113,8 @@ impl PotionsList {
 
     // Compute the Vec of potions with 3 ingredients
     fn get_potions_3<'a>(
-        ingredients: &'a HashMap<(String, u32), Ingredient>,
-        magic_effects: &'a HashMap<(String, u32), MagicEffect>,
+        ingredients: &'a HashMap<u32, Ingredient>,
+        magic_effects: &'a HashMap<u32, MagicEffect>,
     ) -> Vec<Potion<'a>> {
         //Note: temporarily storing the combinations and then using par_iter is about twice as
         //fast as using par_bridge directly on the combinations iterator (at the cost of some ram)
