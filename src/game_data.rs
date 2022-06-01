@@ -1,5 +1,6 @@
 use itertools::Itertools;
-use std::{collections::HashMap, borrow::Borrow};
+use serde::{Serialize, Serializer, ser::SerializeStruct, Deserialize, Deserializer, de::{Visitor, self, SeqAccess, MapAccess}};
+use std::{collections::HashMap, borrow::Borrow, fmt};
 
 use crate::plugin_parser::{
     form_id::{FormIdContainer, GlobalFormId},
@@ -50,12 +51,113 @@ impl ModNamesLookupTable {
     }
 }
 
-// TODO: serialize, deserialize
 pub struct GameData {
     /// Mod/plugin names sorted alphabetically, not by load order
     mod_names: ModNamesLookupTable,
     ingredients: HashMap<(usize, u32), Ingredient>,
     magic_effects: HashMap<(usize, u32), MagicEffect>,
+}
+
+impl Serialize for GameData {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut gd = serializer.serialize_struct("GameData", 2)?;
+        gd.serialize_field("ingredients", &self.ingredients.values().collect::<Vec<_>>())?;
+        gd.serialize_field("magic_effects", &self.magic_effects.values().collect::<Vec<_>>())?;
+        gd.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for GameData {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        enum Field { Ingredients, MagicEffects }
+
+        impl<'de> Deserialize<'de> for Field {
+            fn deserialize<D>(deserializer: D) -> Result<Field, D::Error>
+            where
+                D: Deserializer<'de>,
+            {
+                struct FieldVisitor;
+
+                impl<'de> Visitor<'de> for FieldVisitor {
+                    type Value = Field;
+
+                    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                        formatter.write_str("`ingredients` or `magic_effects`")
+                    }
+
+                    fn visit_str<E>(self, value: &str) -> Result<Field, E>
+                    where
+                        E: de::Error,
+                    {
+                        match value {
+                            "ingredients" => Ok(Field::Ingredients),
+                            "magic_effects" => Ok(Field::MagicEffects),
+                            _ => Err(de::Error::unknown_field(value, FIELDS)),
+                        }
+                    }
+                }
+
+                deserializer.deserialize_identifier(FieldVisitor)
+            }
+        }
+
+        struct GameDataVisitor;
+
+        impl<'de> Visitor<'de> for GameDataVisitor {
+            type Value = GameData;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("struct GameData")
+            }
+
+            fn visit_seq<V>(self, mut seq: V) -> Result<GameData, V::Error>
+            where
+                V: SeqAccess<'de>,
+            {
+                let ingredients = seq.next_element()?
+                    .ok_or_else(|| de::Error::invalid_length(0, &self))?;
+                let magic_effects = seq.next_element()?
+                    .ok_or_else(|| de::Error::invalid_length(1, &self))?;
+                Ok(GameData::from_vecs(ingredients, magic_effects))
+            }
+
+            fn visit_map<V>(self, mut map: V) -> Result<GameData, V::Error>
+            where
+                V: MapAccess<'de>,
+            {
+                let mut ingredients = None;
+                let mut magic_effects = None;
+                while let Some(key) = map.next_key()? {
+                    match key {
+                        Field::Ingredients => {
+                            if ingredients.is_some() {
+                                return Err(de::Error::duplicate_field("ingredients"));
+                            }
+                            ingredients = Some(map.next_value()?);
+                        }
+                        Field::MagicEffects => {
+                            if magic_effects.is_some() {
+                                return Err(de::Error::duplicate_field("magic_effects"));
+                            }
+                            magic_effects = Some(map.next_value()?);
+                        }
+                    }
+                }
+                let ingredients = ingredients.ok_or_else(|| de::Error::missing_field("ingredients"))?;
+                let magic_effects = magic_effects.ok_or_else(|| de::Error::missing_field("magic_effects"))?;
+                Ok(GameData::from_vecs(ingredients, magic_effects))
+            }
+        }
+
+        const FIELDS: &[&str] = &["ingredients", "magic_effects"];
+        deserializer.deserialize_struct("GameData", FIELDS, GameDataVisitor)
+    }
 }
 
 impl GameData {
