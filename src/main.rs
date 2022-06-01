@@ -1,4 +1,13 @@
-use clap::{Parser, Subcommand};
+#![feature(try_blocks)]
+
+use std::{
+    collections::HashSet,
+    fs::File,
+    io::{BufRead, BufReader},
+    path::Path,
+};
+
+use clap::{ArgGroup, Parser, Subcommand};
 use log::LevelFilter;
 
 #[derive(Parser)]
@@ -29,11 +38,37 @@ enum Commands {
 
     // TODO: provide option to suggest potions using only ingredients that the player has
     /// Suggests potions to mix using the ingredients and magic effects in the game data.
+    #[clap(group(ArgGroup::new("ingredients-filter").args(&["ingredients-blacklist-path", "ingredients-whitelist-path"])))]
     SuggestPotions {
+        /// If specified, potions containing any of the ingredients in the file will not be
+        /// suggested. The file must contain one ingredient name per line.
+        #[clap(long)]
+        ingredients_blacklist_path: Option<String>,
+        /// If specified, only potions containing only the ingredients in the file will be
+        /// suggested. The file must contain one ingredient name per line.
+        #[clap(long)]
+        ingredients_whitelist_path: Option<String>,
+        // TODO: validate limit arg (gte 1)
+        /// Limit the number of suggestions to at most this many potions.
+        #[clap(long, default_value_t = 20usize)]
+        limit: usize,
         /// Path to the JSON file that contains the game data. This file can be obtained through the
         /// export-game-data subcommand.
         data_path: String,
     },
+}
+
+fn read_lines_to_hashset<P>(path: P) -> Result<HashSet<String>, anyhow::Error>
+where
+    P: AsRef<Path>,
+{
+    let file = File::open(path)?;
+    let buf = BufReader::new(file);
+    let lines = buf
+        .lines()
+        .map(|l| l.expect("Failed to read line").trim().to_string())
+        .collect::<HashSet<String>>();
+    Ok(lines)
 }
 
 fn main() -> Result<(), anyhow::Error> {
@@ -59,8 +94,29 @@ fn main() -> Result<(), anyhow::Error> {
                 export_path,
             )?;
         }
-        Commands::SuggestPotions { data_path } => {
-            skyrim_alchemy_rs::suggest_potions(data_path)?;
+        Commands::SuggestPotions {
+            data_path,
+            ingredients_blacklist_path: ingredients_blacklist_file,
+            ingredients_whitelist_path: ingredients_whitelist_file,
+            limit,
+        } => {
+            let ingredients_blacklist = ingredients_blacklist_file
+                .as_ref()
+                .map(read_lines_to_hashset)
+                .transpose()?
+                .unwrap_or_default();
+            let ingredients_whitelist = ingredients_whitelist_file
+                .as_ref()
+                .map(read_lines_to_hashset)
+                .transpose()?
+                .unwrap_or_default();
+
+            skyrim_alchemy_rs::suggest_potions(
+                data_path,
+                &ingredients_blacklist,
+                &ingredients_whitelist,
+                *limit,
+            )?;
         }
     }
 

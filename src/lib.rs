@@ -157,7 +157,12 @@ where
     serde_json::from_reader(reader).map_err(|err| anyhow!(err.to_string()))
 }
 
-pub fn suggest_potions<PImport>(import_path: PImport) -> Result<(), anyhow::Error>
+pub fn suggest_potions<PImport>(
+    import_path: PImport,
+    ingredients_blacklist: &HashSet<String>,
+    ingredients_whitelist: &HashSet<String>,
+    limit: usize,
+) -> Result<(), anyhow::Error>
 where
     PImport: AsRef<Path>,
 {
@@ -172,24 +177,37 @@ where
     //     fs::write("data/potions.json", serialized_potions)?;
     // }
 
-    let unwanted_ingredients = HashSet::<&str>::from_iter(vec!["Jarrin Root"]);
-    let wanted_ingredients = HashSet::<&str>::from_iter(vec![]);
+    if !ingredients_blacklist.is_empty() {
+        log::debug!(
+            "Applying ingredients blacklist: {}",
+            ingredients_blacklist.iter().sorted().join(", ")
+        );
+    } else if !ingredients_whitelist.is_empty() {
+        log::debug!(
+            "Applying ingredients whitelist: {}",
+            ingredients_whitelist.iter().sorted().join(", ")
+        );
+    }
 
     potions_list
         .get_potions()
         .filter(|p| {
-            wanted_ingredients.is_empty()
-                || p.ingredients.iter().any(|ing| {
-                    wanted_ingredients.contains(ing.name.as_deref().unwrap_or("__nope__"))
+            // If there's a whitelist, all the potion's ingredients must be in it.
+            ingredients_whitelist.is_empty()
+                || p.ingredients.iter().all(|ing| match ing.name.as_deref() {
+                    None => false,
+                    Some(name) => ingredients_whitelist.contains(name),
                 })
         })
         .filter(|p| {
-            unwanted_ingredients.is_empty()
-                || !p.ingredients.iter().any(|ing| {
-                    unwanted_ingredients.contains(ing.name.as_deref().unwrap_or("__nope__"))
+            // If there's a blacklist, none of the potion's ingredients must be in it.
+            ingredients_blacklist.is_empty()
+                || !p.ingredients.iter().any(|ing| match ing.name.as_deref() {
+                    None => false,
+                    Some(name) => ingredients_blacklist.contains(name),
                 })
         })
-        .take(100)
+        .take(limit)
         .for_each(|p| println!("{}\n", p));
 
     Ok(())
