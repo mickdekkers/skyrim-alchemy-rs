@@ -10,12 +10,14 @@ use std::fs;
 use std::fs::File;
 use std::path::PathBuf;
 
+use crate::game_data::GameData;
 use crate::plugin_parser::utils::nom_err_to_anyhow_err;
 use crate::plugin_parser::{
     form_id::FormIdContainer, ingredient::Ingredient, magic_effect::MagicEffect,
 };
 use crate::potions_list::PotionsList;
 
+mod game_data;
 mod plugin_parser;
 mod potion;
 mod potions_list;
@@ -50,15 +52,15 @@ fn gimme_save_file() -> Result<skyrim_savegame::SaveFile, anyhow::Error> {
 
 fn load_ingredients_and_effects_from_plugins(
     load_order: &Vec<String>,
-) -> Result<(HashMap<u32, Ingredient>, HashMap<u32, MagicEffect>), anyhow::Error> {
+) -> Result<GameData, anyhow::Error> {
     if load_order.is_empty() {
         Err(anyhow!("Load order empty!"))?
     }
 
     // TODO: use &str instead of String for keys
-    let mut magic_effects = HashMap::<u32, MagicEffect>::new();
-    let mut ingredients = HashMap::<u32, Ingredient>::new();
-    let mut ingredient_effect_ids = HashSet::<u32>::new();
+    let mut magic_effects = HashMap::<(String, u32), MagicEffect>::new();
+    let mut ingredients = HashMap::<(String, u32), Ingredient>::new();
+    let mut ingredient_effect_ids = HashSet::<(String, u32)>::new();
 
     for plugin_name in load_order.iter() {
         let plugin_path = GAME_PLUGINS_PATH.join(plugin_name);
@@ -78,7 +80,10 @@ fn load_ingredients_and_effects_from_plugins(
 
         for plugin_magic_effect in plugin_magic_effects.into_iter() {
             // Insert into magic effects hashmap, overwriting existing entry from previous plugins
-            magic_effects.insert(plugin_magic_effect.get_form_id(), plugin_magic_effect);
+            magic_effects.insert(
+                plugin_magic_effect.get_global_form_id().to_owned_pair(),
+                plugin_magic_effect,
+            );
         }
 
         for plugin_ingredient in plugin_ingredients.into_iter() {
@@ -86,18 +91,17 @@ fn load_ingredients_and_effects_from_plugins(
             for plugin_ingredient_effect_id in plugin_ingredient
                 .effects
                 .iter()
-                .map(|eff| eff.get_form_id())
+                .map(|eff| eff.get_global_form_id())
             {
-                ingredient_effect_ids.insert(plugin_ingredient_effect_id);
+                ingredient_effect_ids.insert(plugin_ingredient_effect_id.to_owned_pair());
             }
 
             // Insert into magic effects hashmap, overwriting existing entry from previous plugins
-            ingredients.insert(plugin_ingredient.get_form_id(), plugin_ingredient);
+            ingredients.insert(plugin_ingredient.get_global_form_id().to_owned_pair(), plugin_ingredient);
         }
     }
 
     // Remove from the magic effects all those that are not used by ingredients
-
     log::debug!("Number of ingredients: {}", ingredients.len());
     log::debug!(
         "Number of magic effects before filtering: {}",
@@ -109,25 +113,29 @@ fn load_ingredients_and_effects_from_plugins(
         magic_effects.len()
     );
 
-    // TODO: find way to avoid clone here (can't difference `&HashSet<(String, u32)>` and `&HashSet<&(String, u32)>)` because they're different types)
-    let mgef_keys = magic_effects.keys().cloned().collect::<HashSet<u32>>();
+    let mut game_data = GameData::from_hashmaps(ingredients, magic_effects);
+    game_data.purge_invalid();
 
-    // TODO: if missing mgefs, identify which ingredients
-    let num_missing_mgefs = ingredient_effect_ids.difference(&mgef_keys).count();
-    assert!(num_missing_mgefs == 0);
-
-    Ok((ingredients, magic_effects))
+    Ok(game_data)
 }
 
 pub fn do_the_thing() -> Result<(), anyhow::Error> {
     let load_order = gimme_load_order()?;
     log::debug!("Load order:\n{:#?}", &load_order);
-    let (ingredients, magic_effects) = load_ingredients_and_effects_from_plugins(&load_order)?;
+    let game_data = load_ingredients_and_effects_from_plugins(&load_order)?;
+    // {
+    //     let serialized_ingredients =
+    //         serde_json::to_string_pretty(&ingredients.values().collect_vec()).unwrap();
+    //     fs::write("data/ingredients.json", serialized_ingredients)?;
+    // }
+    // {
+    //     let serialized_magic_effects =
+    //         serde_json::to_string_pretty(&magic_effects.values().collect_vec()).unwrap();
+    //     fs::write("data/magic_effects.json", serialized_magic_effects)?;
+    // }
 
-    // let serialized_ingredients =
-    //     serde_json::to_string_pretty(&ingredients.values().collect_vec()).unwrap();
-    // let serialized_magic_effects =
-    //     serde_json::to_string_pretty(&magic_effects.values().collect_vec()).unwrap();
+    let mut potions_list = PotionsList::new(&game_data);
+    potions_list.build_potions();
 
     // fs::write("data/ingredients.json", serialized_ingredients)?;
     // fs::write("data/magic_effects.json", serialized_magic_effects)?;
@@ -232,12 +240,20 @@ pub fn do_the_thing() -> Result<(), anyhow::Error> {
             // Skip scale float
             nom::number::complete::le_f32,
         ),
-        // TODO: extra data 😅
-        // TODO: should probably just match on the data type and panic if unknown, then iterate by adding parsers till it fully parses the player change form. Also look at the flags, they seem to (mostly) correspond to extra data types. Hopefully 🤞 we won't run into any extra data types whose lengths are unknown...
-
-        // TODO: inventory
     ))(player_change_form.data.as_ref())
     .map_err(nom_err_to_anyhow_err)?;
+
+    // Now comes the extra data (probably), which we don't have enough information on to skip
+
+    // TODO: scan the remaining changeform data for known refIDs to find the inventory
+    // Construct skyrim_savegame::RefId out of 3 consecutive bytes, then convert that to a form ID and see if that is in a map of known ingredient form IDs
+    // if it is, parse the next four bytes as an i32 (or u32?), which would indicate the count
+    // probably need to use iter().windows() https://doc.rust-lang.org/stable/std/primitive.slice.html#method.windows
+    // also see if we can skip the next n bytes if an ingredient is found
+    // can do a sanity check on the count to see if that's in a reasonable range too
+    // would be cool if we could use rayon, but probably not needed
+
+    // TODO: somehow prevent / filter out false positives in case some random bytes happen to match a known form ID. Perhaps consider index where found and eliminate outliers at start and end? Inventory entries should be fairly close together, though each entry can also have zero or more extra datas (I'm guessing these will be rather small?)
 
     Ok(())
 }

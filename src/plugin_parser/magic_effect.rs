@@ -1,6 +1,6 @@
 use anyhow::anyhow;
 use nom::error::ErrorKind;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use std::num::NonZeroU32;
 
@@ -13,7 +13,7 @@ use crate::plugin_parser::utils::{parse_zstring, split_form_id};
 
 use super::form_id::FormIdContainer;
 
-#[derive(Clone, PartialEq, Debug, Default, Serialize)]
+#[derive(Clone, PartialEq, Debug, Default, Serialize, Deserialize)]
 pub struct MagicEffect {
     pub form_id: u32,
     pub mod_name: String,
@@ -41,12 +41,12 @@ impl MagicEffect {
 }
 
 impl FormIdContainer for MagicEffect {
-    fn get_form_id(&self) -> u32 {
+    fn get_local_form_id(&self) -> u32 {
         self.form_id
     }
 
-    fn get_form_id_pair(&self) -> super::form_id::FormIdPair<&str> {
-        super::form_id::FormIdPair(self.mod_name.as_str(), self.id)
+    fn get_global_form_id(&self) -> super::form_id::GlobalFormId {
+        super::form_id::GlobalFormId::new(self.mod_name.as_str(), self.id)
     }
 }
 

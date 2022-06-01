@@ -4,11 +4,11 @@ use arrayvec::ArrayVec;
 use itertools::Itertools;
 use once_cell::sync::OnceCell;
 
-use crate::plugin_parser::{
-    form_id::FormIdContainer,
+use crate::{plugin_parser::{
+    form_id::{FormIdContainer, GlobalFormId},
     ingredient::{Ingredient, IngredientEffect},
     magic_effect::MagicEffect,
-};
+}, game_data::GameData};
 use serde::{ser::SerializeSeq, Serialize, Serializer};
 
 /// Minimum number of ingredients per potion
@@ -69,13 +69,13 @@ pub struct PotionEffect<'a> {
 
 impl<'a> PotionEffect<'a> {
     pub fn from_ingredient_effect(
-        igef: &IngredientEffect,
-        all_magic_effects: &'a HashMap<u32, MagicEffect>,
+        igef: &'a IngredientEffect,
+        game_data: &'a GameData,
     ) -> Self {
         PotionEffect {
             base_duration: igef.duration,
             base_magnitude: igef.magnitude,
-            magic_effect: all_magic_effects.get(&igef.get_form_id()).unwrap(),
+            magic_effect: game_data.get_magic_effect(&igef.get_global_form_id()).unwrap(),
             duration: OnceCell::new(),
             magnitude: OnceCell::new(),
             gold_value: OnceCell::new(),
@@ -164,12 +164,12 @@ impl<'a> PotionEffect<'a> {
 }
 
 impl<'a> FormIdContainer for PotionEffect<'a> {
-    fn get_form_id(&self) -> u32 {
+    fn get_local_form_id(&self) -> u32 {
         self.magic_effect.form_id
     }
 
-    fn get_form_id_pair(&self) -> crate::plugin_parser::form_id::FormIdPair<&str> {
-        crate::plugin_parser::form_id::FormIdPair(
+    fn get_global_form_id(&self) -> crate::plugin_parser::form_id::GlobalFormId {
+        crate::plugin_parser::form_id::GlobalFormId::new(
             self.magic_effect.mod_name.as_str(),
             self.magic_effect.id,
         )
@@ -241,7 +241,7 @@ impl<'a> Potion<'a> {
 
     pub fn from_ingredients(
         ingredients: &ArrayVec<&'a Ingredient, MAX_INGREDIENTS>,
-        all_magic_effects: &'a HashMap<u32, MagicEffect>,
+        game_data: &'a GameData,
     ) -> Result<Self, PotionCraftError<'a>> {
         if ingredients.len() < MIN_INGREDIENTS {
             return Err(PotionCraftError::NotEnoughIngredients);
@@ -254,7 +254,7 @@ impl<'a> Potion<'a> {
         if let Some(ing_with_dup_effects) = ingredients.iter().find(|ig| {
             ig.effects
                 .iter()
-                .duplicates_by(|igef| igef.get_form_id())
+                .duplicates_by(|igef| igef.get_global_form_id())
                 .count()
                 > 0
         }) {
@@ -264,14 +264,14 @@ impl<'a> Potion<'a> {
         let ingredients_effects = ingredients
             .iter()
             .flat_map(|ig| ig.effects.iter())
-            .sorted_by_key(|igef| igef.get_form_id())
+            .sorted_by_key(|igef| igef.get_global_form_id())
             .collect_vec();
 
         // assert_eq!(ingredients_effects.len(), ingredients.len() * 4);
 
         let ingredients_effects_counts = ingredients_effects
             .iter()
-            .counts_by(|igef| igef.get_form_id());
+            .counts_by(|igef| igef.get_global_form_id());
 
         if ingredients_effects_counts.values().all(|count| *count < 2) {
             return Err(PotionCraftError::NoSharedEffects);
@@ -280,10 +280,15 @@ impl<'a> Potion<'a> {
         // active effects are those that appear in more than one ingredient
         let active_effects = ingredients_effects
             .iter()
-            .filter(|igef| *(ingredients_effects_counts.get(&igef.get_form_id()).unwrap()) > 1)
-            .map(|igef| PotionEffect::from_ingredient_effect(igef, all_magic_effects))
+            .filter(|igef| {
+                *(ingredients_effects_counts
+                    .get(&igef.get_global_form_id())
+                    .unwrap())
+                    > 1
+            })
+            .map(|igef| PotionEffect::from_ingredient_effect(igef, game_data))
             .coalesce(|potef1, potef2| {
-                if potef1.get_form_id() == potef2.get_form_id() {
+                if potef1.get_global_form_id() == potef2.get_global_form_id() {
                     // Select most valuable (strongest) version of each effect
                     Ok({
                         if potef1.get_gold_value() >= potef2.get_gold_value() {
