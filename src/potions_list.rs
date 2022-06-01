@@ -18,7 +18,7 @@ impl<'a> Serialize for PotionsList<'a> {
     where
         S: Serializer,
     {
-        let mut pl = serializer.serialize_struct("", 2)?;
+        let mut pl = serializer.serialize_struct("PotionsList", 2)?;
         pl.serialize_field("potions_2", &self.potions_2)?;
         pl.serialize_field("potions_3", &self.potions_3)?;
         pl.end()
