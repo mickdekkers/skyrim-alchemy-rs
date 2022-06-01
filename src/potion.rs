@@ -4,11 +4,14 @@ use arrayvec::ArrayVec;
 use itertools::Itertools;
 use once_cell::sync::OnceCell;
 
-use crate::{plugin_parser::{
-    form_id::{FormIdContainer, GlobalFormId},
-    ingredient::{Ingredient, IngredientEffect},
-    magic_effect::MagicEffect,
-}, game_data::GameData};
+use crate::{
+    game_data::GameData,
+    plugin_parser::{
+        form_id::{FormIdContainer, GlobalFormId},
+        ingredient::{Ingredient, IngredientEffect},
+        magic_effect::MagicEffect,
+    },
+};
 use serde::{ser::SerializeSeq, Serialize, Serializer};
 
 /// Minimum number of ingredients per potion
@@ -68,14 +71,13 @@ pub struct PotionEffect<'a> {
 // TODO: use enums for all the various flags
 
 impl<'a> PotionEffect<'a> {
-    pub fn from_ingredient_effect(
-        igef: &'a IngredientEffect,
-        game_data: &'a GameData,
-    ) -> Self {
+    pub fn from_ingredient_effect(igef: &'a IngredientEffect, game_data: &'a GameData) -> Self {
         PotionEffect {
             base_duration: igef.duration,
             base_magnitude: igef.magnitude,
-            magic_effect: game_data.get_magic_effect(&igef.get_global_form_id()).unwrap(),
+            magic_effect: game_data
+                .get_magic_effect(&igef.get_global_form_id())
+                .unwrap(),
             duration: OnceCell::new(),
             magnitude: OnceCell::new(),
             gold_value: OnceCell::new(),
