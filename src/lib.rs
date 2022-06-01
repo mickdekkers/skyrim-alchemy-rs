@@ -1,14 +1,15 @@
 #![feature(hash_drain_filter)]
 
 use anyhow::{anyhow, Context};
-use lazy_static::lazy_static;
+use itertools::Itertools;
 use log_err::{LogErrOption, LogErrResult};
 use nom::IResult;
 use skyrim_savegame::{read_vsval_to_u32, ChangeForm, FormIdType, SaveFile, VSVal};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::fs::File;
-use std::path::PathBuf;
+use std::io::BufReader;
+use std::path::Path;
 
 use crate::game_data::GameData;
 use crate::plugin_parser::utils::nom_err_to_anyhow_err;
@@ -22,14 +23,22 @@ mod plugin_parser;
 mod potion;
 mod potions_list;
 
-lazy_static! {
-    static ref GAME_PATH: PathBuf =
-        PathBuf::from(&"H:/SteamLibrary/steamapps/common/Skyrim Special Edition");
-    static ref GAME_PLUGINS_PATH: PathBuf = GAME_PATH.join(&"Data");
-}
-
-fn gimme_load_order() -> Result<Vec<String>, anyhow::Error> {
-    let game_settings = loadorder::GameSettings::new(loadorder::GameId::SkyrimSE, &GAME_PATH)?;
+fn get_load_order<PGame, PLocal>(
+    game_path: PGame,
+    local_path: Option<PLocal>,
+) -> Result<Vec<String>, anyhow::Error>
+where
+    PGame: AsRef<Path>,
+    PLocal: AsRef<Path>,
+{
+    let game_settings = match local_path {
+        Some(local_path) => loadorder::GameSettings::with_local_path(
+            loadorder::GameId::SkyrimSE,
+            game_path.as_ref(),
+            local_path.as_ref(),
+        ),
+        None => loadorder::GameSettings::new(loadorder::GameId::SkyrimSE, game_path.as_ref()),
+    }?;
     let mut load_order = game_settings.into_load_order();
     // Read load order file contents
     load_order.load()?;
@@ -41,21 +50,18 @@ fn gimme_load_order() -> Result<Vec<String>, anyhow::Error> {
     Ok(active_plugin_names.iter().map(|&s| s.into()).collect())
 }
 
-fn gimme_save_file() -> Result<skyrim_savegame::SaveFile, anyhow::Error> {
-    let file_data = fs::read(
-        "data/Save67_9C94C7CA_0_416D656C6961_RiftenBeeandBarb_001538_20220520233103_8_1.ess",
-    )
-    .context("Failed to open save file")?;
-    // TODO: this may panic. Catch somehow?
-    Ok(skyrim_savegame::parse_save_file(file_data))
-}
-
-fn load_ingredients_and_effects_from_plugins(
+fn load_ingredients_and_effects_from_plugins<PGame>(
+    game_path: PGame,
     load_order: &Vec<String>,
-) -> Result<GameData, anyhow::Error> {
+) -> Result<GameData, anyhow::Error>
+where
+    PGame: AsRef<Path>,
+{
     if load_order.is_empty() {
         Err(anyhow!("Load order empty!"))?
     }
+
+    let game_plugins_path = game_path.as_ref().join("Data");
 
     // TODO: use &str instead of String for keys
     let mut magic_effects = HashMap::<(String, u32), MagicEffect>::new();
@@ -63,13 +69,13 @@ fn load_ingredients_and_effects_from_plugins(
     let mut ingredient_effect_ids = HashSet::<(String, u32)>::new();
 
     for plugin_name in load_order.iter() {
-        let plugin_path = GAME_PLUGINS_PATH.join(plugin_name);
+        let plugin_path = game_plugins_path.join(plugin_name);
 
         let plugin_file = File::open(&plugin_path)?;
         // TODO: implement better (safer, streaming) file loading
         let plugin_mmap = unsafe { memmap2::MmapOptions::new().map(&plugin_file)? };
         let (plugin_ingredients, plugin_magic_effects) =
-            plugin_parser::parse_plugin(&plugin_mmap, plugin_name, &GAME_PLUGINS_PATH)?;
+            plugin_parser::parse_plugin(&plugin_mmap, plugin_name, &game_plugins_path)?;
 
         log::debug!(
             "Plugin {:?} has {:?} ingredients and {:?} magic effects.",
@@ -97,7 +103,10 @@ fn load_ingredients_and_effects_from_plugins(
             }
 
             // Insert into magic effects hashmap, overwriting existing entry from previous plugins
-            ingredients.insert(plugin_ingredient.get_global_form_id().to_owned_pair(), plugin_ingredient);
+            ingredients.insert(
+                plugin_ingredient.get_global_form_id().to_owned_pair(),
+                plugin_ingredient,
+            );
         }
     }
 
@@ -119,44 +128,83 @@ fn load_ingredients_and_effects_from_plugins(
     Ok(game_data)
 }
 
-pub fn do_the_thing() -> Result<(), anyhow::Error> {
-    let load_order = gimme_load_order()?;
+pub fn parse_and_export_game_data<PGame, PLocal, PExport>(
+    game_path: PGame,
+    local_path: Option<PLocal>,
+    export_path: PExport,
+) -> Result<(), anyhow::Error>
+where
+    PGame: AsRef<Path>,
+    PLocal: AsRef<Path>,
+    PExport: AsRef<Path>,
+{
+    let load_order = get_load_order(&game_path, local_path)?;
     log::debug!("Load order:\n{:#?}", &load_order);
-    let game_data = load_ingredients_and_effects_from_plugins(&load_order)?;
-    // {
-    //     let serialized_ingredients =
-    //         serde_json::to_string_pretty(&ingredients.values().collect_vec()).unwrap();
-    //     fs::write("data/ingredients.json", serialized_ingredients)?;
-    // }
-    // {
-    //     let serialized_magic_effects =
-    //         serde_json::to_string_pretty(&magic_effects.values().collect_vec()).unwrap();
-    //     fs::write("data/magic_effects.json", serialized_magic_effects)?;
-    // }
+
+    let game_data = load_ingredients_and_effects_from_plugins(&game_path, &load_order)?;
+    let serialized_game_data = serde_json::to_string_pretty(&game_data).unwrap();
+    fs::write(export_path, serialized_game_data)?;
+
+    Ok(())
+}
+
+pub fn import_game_data<PImport>(import_path: PImport) -> Result<GameData, anyhow::Error>
+where
+    PImport: AsRef<Path>,
+{
+    let file = File::open(import_path)?;
+    let reader = BufReader::new(file);
+    serde_json::from_reader(reader).map_err(|err| anyhow!(err.to_string()))
+}
+
+pub fn suggest_potions<PImport>(import_path: PImport) -> Result<(), anyhow::Error>
+where
+    PImport: AsRef<Path>,
+{
+    let game_data = import_game_data(import_path)?;
 
     let mut potions_list = PotionsList::new(&game_data);
     potions_list.build_potions();
 
-    // fs::write("data/ingredients.json", serialized_ingredients)?;
-    // fs::write("data/magic_effects.json", serialized_magic_effects)?;
+    // You probably don't want to uncomment this, it'll write out a 600Mb+ json file
+    // {
+    //     let serialized_potions = serde_json::to_string_pretty(&potions_list).unwrap();
+    //     fs::write("data/potions.json", serialized_potions)?;
+    // }
 
-    // let potions_list = PotionsList::build(ingredients, magic_effects);
+    let unwanted_ingredients = HashSet::<&str>::from_iter(vec!["Jarrin Root"]);
+    let wanted_ingredients = HashSet::<&str>::from_iter(vec![]);
 
-    // potions_list
-    //     .get_potions()
-    //     .filter(|p| {
-    //         p.ingredients.iter().all(|ig| {
-    //             matches!(
-    //                 ig.name.as_deref(),
-    //                 Some("Lavender") | Some("Hanging Moss") | Some("Blue Mountain Flower")
-    //             )
-    //         })
-    //     })
-    //     .take(100)
-    //     .for_each(|p| log::info!("{}\n", p));
+    potions_list
+        .get_potions()
+        .filter(|p| {
+            wanted_ingredients.is_empty()
+                || p.ingredients.iter().any(|ing| {
+                    wanted_ingredients.contains(ing.name.as_deref().unwrap_or("__nope__"))
+                })
+        })
+        .filter(|p| {
+            unwanted_ingredients.is_empty()
+                || !p.ingredients.iter().any(|ing| {
+                    unwanted_ingredients.contains(ing.name.as_deref().unwrap_or("__nope__"))
+                })
+        })
+        .take(100)
+        .for_each(|p| println!("{}\n", p));
 
-    // TODO: filter PotionsList to include only ingredients that the player has
+    Ok(())
+}
 
+fn gimme_save_file() -> Result<skyrim_savegame::SaveFile, anyhow::Error> {
+    let file_data = fs::read(
+        "data/Save327_CE738163_0_52756279_WhiterunBanneredMare_001512_20220531222232_10_1.ess",
+    )
+    .context("Failed to open save file")?;
+    // TODO: this may panic. Catch somehow?
+    Ok(skyrim_savegame::parse_save_file(file_data))
+}
+
+pub fn do_stuff_with_save_file() -> Result<(), anyhow::Error> {
     let save_file = gimme_save_file()?;
     log::info!("{:#?}", save_file);
 
@@ -295,6 +343,7 @@ pub fn read_vsval(input: &[u8]) -> IResult<&[u8], u32> {
             let (input, second_byte) = nom::number::complete::le_u8(input)?;
             Ok((
                 input,
+                // TODO: XOR, correct?
                 (((second_byte as u16) << 8 ^ first_byte) >> 2) as u32,
             ))
         }
