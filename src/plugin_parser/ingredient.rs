@@ -1,7 +1,7 @@
 use anyhow::anyhow;
 use itertools::Itertools;
 use nom::error::ErrorKind;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use std::hash::Hash;
 
@@ -17,7 +17,7 @@ use crate::plugin_parser::utils::{le_slice_to_u32, parse_zstring, split_form_id}
 
 use super::form_id::FormIdContainer;
 
-#[derive(Clone, Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Ingredient {
     pub form_id: u32,
     pub mod_name: String,
@@ -27,7 +27,7 @@ pub struct Ingredient {
     pub effects: Vec<IngredientEffect>,
 }
 
-#[derive(Clone, PartialEq, Debug, Default, Serialize)]
+#[derive(Clone, PartialEq, Debug, Default, Serialize, Deserialize)]
 pub struct IngredientEffect {
     pub form_id: u32,
     pub mod_name: String,
@@ -59,16 +59,12 @@ impl Ingredient {
 }
 
 impl FormIdContainer for Ingredient {
-    fn get_form_id(&self) -> u32 {
+    fn get_local_form_id(&self) -> u32 {
         self.form_id
     }
 
-    fn get_form_id_pair(&self) -> super::form_id::FormIdPair {
-        (self.mod_name.clone(), self.id)
-    }
-
-    fn get_form_id_pair_ref(&self) -> super::form_id::FormIdPairRef {
-        (self.mod_name.as_str(), self.id)
+    fn get_global_form_id(&self) -> crate::plugin_parser::form_id::GlobalFormId {
+        crate::plugin_parser::form_id::GlobalFormId::new(self.mod_name.as_str(), self.id)
     }
 }
 
@@ -89,16 +85,12 @@ impl PartialEq for Ingredient {
 impl Eq for Ingredient {}
 
 impl FormIdContainer for IngredientEffect {
-    fn get_form_id(&self) -> u32 {
+    fn get_local_form_id(&self) -> u32 {
         self.form_id
     }
 
-    fn get_form_id_pair(&self) -> super::form_id::FormIdPair {
-        (self.mod_name.clone(), self.id)
-    }
-
-    fn get_form_id_pair_ref(&self) -> super::form_id::FormIdPairRef {
-        (self.mod_name.as_str(), self.id)
+    fn get_global_form_id(&self) -> super::form_id::GlobalFormId {
+        super::form_id::GlobalFormId::new(self.mod_name.as_str(), self.id)
     }
 }
 
@@ -188,7 +180,7 @@ where
     }
 
     // Sort to make later usage more optimized
-    effects.sort_by_key(|eff| eff.get_form_id_pair());
+    effects.sort_by_key(|eff| eff.get_local_form_id());
 
     Ok(Ingredient {
         form_id: u32::from(form_id),

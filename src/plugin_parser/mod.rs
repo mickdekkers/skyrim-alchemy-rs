@@ -17,7 +17,7 @@ mod group;
 pub(crate) mod ingredient;
 pub(crate) mod magic_effect;
 mod strings_table;
-mod utils;
+pub(crate) mod utils;
 
 pub fn parse_plugin<'a>(
     input: &'a [u8],
