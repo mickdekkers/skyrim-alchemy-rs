@@ -1,9 +1,5 @@
-use std::num::NonZeroU32;
-
-use anyhow::anyhow;
-use encoding_rs::WINDOWS_1252;
-
 use super::strings_table::StringsTable;
+use encoding_rs::WINDOWS_1252;
 
 pub fn parse_string(data: &[u8]) -> String {
     WINDOWS_1252
@@ -68,20 +64,4 @@ where
     E: std::fmt::Debug,
 {
     anyhow::anyhow!(err.to_string())
-}
-
-pub fn split_form_id<FnGetMaster>(
-    id: NonZeroU32,
-    get_master: FnGetMaster,
-) -> Result<(String, u32), anyhow::Error>
-where
-    FnGetMaster: Fn(NonZeroU32) -> Option<String>,
-{
-    // See https://en.uesp.net/wiki/Skyrim:Form_ID
-    let mod_name =
-        get_master(id).ok_or_else(|| anyhow!("record has invalid master reference in form ID"))?;
-    // The last six hex digits are the ID of the record itself
-    let id = u32::from(id) & 0x00FFFFFF;
-
-    Ok((mod_name, id))
 }

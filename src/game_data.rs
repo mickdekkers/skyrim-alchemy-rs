@@ -4,25 +4,28 @@ use serde::{
     ser::SerializeStruct,
     Deserialize, Deserializer, Serialize, Serializer,
 };
-use std::{borrow::Borrow, collections::HashMap, fmt};
+use std::{collections::HashMap, fmt};
 
-use crate::plugin_parser::{
-    form_id::{FormIdContainer, GlobalFormId},
-    ingredient::Ingredient,
-    magic_effect::MagicEffect,
+use crate::{
+    load_order::LoadOrder,
+    plugin_parser::{
+        form_id::{FormIdContainer, GlobalFormId},
+        ingredient::Ingredient,
+        magic_effect::MagicEffect,
+    },
 };
 
 #[derive(thiserror::Error, Debug)]
 #[error("the form ID {} is unknown", .form_id)]
-pub struct UnknownFormIdError<'a> {
-    pub form_id: GlobalFormId<'a>,
+pub struct UnknownFormIdError {
+    pub form_id: GlobalFormId,
 }
 
 // TODO: validate more invalid data conditions
 #[derive(thiserror::Error, Debug)]
 pub enum IngredientError<'a> {
     #[error("ingredient {} references unknown magic effects: {}", get_ingredient_name_or_fallback(.0), .1.iter().join(", "))]
-    ReferencesUnknownMagicEffects(&'a Ingredient, Vec<UnknownFormIdError<'a>>),
+    ReferencesUnknownMagicEffects(&'a Ingredient, Vec<UnknownFormIdError>),
 }
 
 fn get_ingredient_name_or_fallback(ingredient: &Ingredient) -> &str {
@@ -33,36 +36,11 @@ fn get_ingredient_name_or_fallback(ingredient: &Ingredient) -> &str {
     }
 }
 
-// TODO: consider different (faster) way of getting a hashmap key for a GlobalFormId. Maybe RawEntryBuilder? https://doc.rust-lang.org/stable/std/collections/hash_map/struct.RawEntryBuilder.html
-struct ModNamesLookupTable {
-    mod_names: Vec<String>,
-}
-
-impl ModNamesLookupTable {
-    pub fn new(mut mod_names: Vec<String>) -> Self {
-        // Sort for binary searches
-        mod_names.sort();
-        Self { mod_names }
-    }
-
-    pub fn get_index(&self, mod_name: &str) -> Option<usize> {
-        self.mod_names
-            .binary_search_by(|x| x.as_str().cmp(mod_name))
-            .ok()
-    }
-
-    /// Returns `Option<(usize, u32)>`, where the first element is the index of `form_id.plugin` in `mod_names` and the second element is the `form_id.id`
-    pub fn index_global_form_id(&self, global_form_id: &GlobalFormId) -> Option<(usize, u32)> {
-        self.get_index(global_form_id.plugin.borrow())
-            .map(|index| (index, global_form_id.id))
-    }
-}
-
+// TODO: when serializing/deserializing game data, keep load order
 pub struct GameData {
-    /// Mod/plugin names sorted alphabetically, not by load order
-    mod_names: ModNamesLookupTable,
-    ingredients: HashMap<(usize, u32), Ingredient>,
-    magic_effects: HashMap<(usize, u32), MagicEffect>,
+    load_order: LoadOrder,
+    ingredients: HashMap<GlobalFormId, Ingredient>,
+    magic_effects: HashMap<GlobalFormId, MagicEffect>,
 }
 
 impl Serialize for GameData {
@@ -70,7 +48,8 @@ impl Serialize for GameData {
     where
         S: Serializer,
     {
-        let mut gd = serializer.serialize_struct("GameData", 2)?;
+        let mut gd = serializer.serialize_struct("GameData", 3)?;
+        gd.serialize_field("load_order", &self.load_order.iter().collect::<Vec<_>>())?;
         gd.serialize_field(
             "ingredients",
             &self.ingredients.values().collect::<Vec<_>>(),
@@ -89,6 +68,7 @@ impl<'de> Deserialize<'de> for GameData {
         D: Deserializer<'de>,
     {
         enum Field {
+            LoadOrder,
             Ingredients,
             MagicEffects,
         }
@@ -104,7 +84,7 @@ impl<'de> Deserialize<'de> for GameData {
                     type Value = Field;
 
                     fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                        formatter.write_str("`ingredients` or `magic_effects`")
+                        formatter.write_str("`load_order` or `ingredients` or `magic_effects`")
                     }
 
                     fn visit_str<E>(self, value: &str) -> Result<Field, E>
@@ -112,6 +92,7 @@ impl<'de> Deserialize<'de> for GameData {
                         E: de::Error,
                     {
                         match value {
+                            "load_order" => Ok(Field::LoadOrder),
                             "ingredients" => Ok(Field::Ingredients),
                             "magic_effects" => Ok(Field::MagicEffects),
                             _ => Err(de::Error::unknown_field(value, FIELDS)),
@@ -136,23 +117,33 @@ impl<'de> Deserialize<'de> for GameData {
             where
                 V: SeqAccess<'de>,
             {
-                let ingredients = seq
+                let load_order = seq
                     .next_element()?
                     .ok_or_else(|| de::Error::invalid_length(0, &self))?;
-                let magic_effects = seq
+                let ingredients = seq
                     .next_element()?
                     .ok_or_else(|| de::Error::invalid_length(1, &self))?;
-                Ok(GameData::from_vecs(ingredients, magic_effects))
+                let magic_effects = seq
+                    .next_element()?
+                    .ok_or_else(|| de::Error::invalid_length(2, &self))?;
+                Ok(GameData::from_vecs(load_order, ingredients, magic_effects))
             }
 
             fn visit_map<V>(self, mut map: V) -> Result<GameData, V::Error>
             where
                 V: MapAccess<'de>,
             {
+                let mut load_order = None;
                 let mut ingredients = None;
                 let mut magic_effects = None;
                 while let Some(key) = map.next_key()? {
                     match key {
+                        Field::LoadOrder => {
+                            if load_order.is_some() {
+                                return Err(de::Error::duplicate_field("load_order"));
+                            }
+                            load_order = Some(map.next_value()?);
+                        }
                         Field::Ingredients => {
                             if ingredients.is_some() {
                                 return Err(de::Error::duplicate_field("ingredients"));
@@ -167,111 +158,70 @@ impl<'de> Deserialize<'de> for GameData {
                         }
                     }
                 }
+                let load_order =
+                    load_order.ok_or_else(|| de::Error::missing_field("load_order"))?;
                 let ingredients =
                     ingredients.ok_or_else(|| de::Error::missing_field("ingredients"))?;
                 let magic_effects =
                     magic_effects.ok_or_else(|| de::Error::missing_field("magic_effects"))?;
-                Ok(GameData::from_vecs(ingredients, magic_effects))
+                Ok(GameData::from_vecs(load_order, ingredients, magic_effects))
             }
         }
 
-        const FIELDS: &[&str] = &["ingredients", "magic_effects"];
+        const FIELDS: &[&str] = &["load_order", "ingredients", "magic_effects"];
         deserializer.deserialize_struct("GameData", FIELDS, GameDataVisitor)
     }
 }
 
 impl GameData {
     pub fn from_hashmaps(
-        ingredients: HashMap<(String, u32), Ingredient>,
-        magic_effects: HashMap<(String, u32), MagicEffect>,
+        load_order: LoadOrder,
+        ingredients: HashMap<GlobalFormId, Ingredient>,
+        magic_effects: HashMap<GlobalFormId, MagicEffect>,
     ) -> Self {
-        let mod_names = ingredients
-            .keys()
-            .chain(magic_effects.keys())
-            .map(|form_id| &form_id.0)
-            .unique()
-            .cloned()
-            .collect::<Vec<String>>();
-        let mod_names = ModNamesLookupTable::new(mod_names);
-
-        let ingredients = ingredients
-            .into_iter()
-            .map(|(k, v)| ((mod_names.get_index(k.0.as_str()).unwrap(), k.1), v))
-            .collect();
-        let magic_effects = magic_effects
-            .into_iter()
-            .map(|(k, v)| ((mod_names.get_index(k.0.as_str()).unwrap(), k.1), v))
-            .collect();
-
         Self {
-            mod_names,
+            load_order,
             ingredients,
             magic_effects,
         }
     }
 
-    pub fn from_vecs(ingredients: Vec<Ingredient>, magic_effects: Vec<MagicEffect>) -> Self {
-        let mod_names = ingredients
-            .iter()
-            .map(|ing| &ing.mod_name)
-            .chain(magic_effects.iter().map(|mgef| &mgef.mod_name))
-            .unique()
-            .cloned()
-            .collect::<Vec<String>>();
-        let mod_names = ModNamesLookupTable::new(mod_names);
-
+    pub fn from_vecs(
+        load_order: Vec<String>,
+        ingredients: Vec<Ingredient>,
+        magic_effects: Vec<MagicEffect>,
+    ) -> Self {
+        let load_order = LoadOrder::new(load_order);
         let ingredients = ingredients
             .into_iter()
-            .map(|ing| {
-                (
-                    mod_names
-                        .index_global_form_id(&ing.get_global_form_id())
-                        .unwrap(),
-                    ing,
-                )
-            })
+            .map(|ing| (ing.get_global_form_id(), ing))
             .collect();
         let magic_effects = magic_effects
             .into_iter()
-            .map(|mgef| {
-                (
-                    mod_names
-                        .index_global_form_id(&mgef.get_global_form_id())
-                        .unwrap(),
-                    mgef,
-                )
-            })
+            .map(|mgef| (mgef.get_global_form_id(), mgef))
             .collect();
 
         Self {
-            mod_names,
+            load_order,
             ingredients,
             magic_effects,
         }
     }
 
-    pub fn get_ingredients(&self) -> &HashMap<(usize, u32), Ingredient> {
+    pub fn get_ingredients(&self) -> &HashMap<GlobalFormId, Ingredient> {
         &self.ingredients
     }
 
-    pub fn get_magic_effects(&self) -> &HashMap<(usize, u32), MagicEffect> {
+    pub fn get_magic_effects(&self) -> &HashMap<GlobalFormId, MagicEffect> {
         &self.magic_effects
     }
 
-    pub fn get_key_for(&self, global_form_id: &GlobalFormId) -> Option<(usize, u32)> {
-        self.mod_names.index_global_form_id(global_form_id)
-    }
-
     pub fn get_magic_effect(&self, global_form_id: &GlobalFormId) -> Option<&MagicEffect> {
-        self.mod_names
-            .index_global_form_id(global_form_id)
-            .and_then(|key| self.magic_effects.get(&key))
+        self.magic_effects.get(global_form_id)
     }
 
     pub fn get_ingredient(&self, global_form_id: &GlobalFormId) -> Option<&Ingredient> {
-        self.mod_names
-            .index_global_form_id(global_form_id)
-            .and_then(|key| self.ingredients.get(&key))
+        self.ingredients.get(global_form_id)
     }
 
     pub fn validate(&self) -> Result<(), Vec<IngredientError>> {
@@ -279,21 +229,19 @@ impl GameData {
             .ingredients
             .values()
             .filter_map(|ing| {
-                let unknown_ingefs =
-                    ing.effects
-                        .iter()
-                        .filter_map(|ingef| {
-                            if self.magic_effects.contains_key(
-                                &self.get_key_for(&ingef.get_global_form_id()).unwrap(),
-                            ) {
-                                None
-                            } else {
-                                Some(UnknownFormIdError {
-                                    form_id: ingef.get_global_form_id(),
-                                })
-                            }
-                        })
-                        .collect::<Vec<_>>();
+                let unknown_ingefs = ing
+                    .effects
+                    .iter()
+                    .filter_map(|ingef| {
+                        if self.magic_effects.contains_key(&ingef.get_global_form_id()) {
+                            None
+                        } else {
+                            Some(UnknownFormIdError {
+                                form_id: ingef.get_global_form_id(),
+                            })
+                        }
+                    })
+                    .collect::<Vec<_>>();
                 if unknown_ingefs.is_empty() {
                     None
                 } else {
@@ -332,7 +280,7 @@ impl GameData {
                 .iter()
                 .map(|ing_err| match ing_err {
                     IngredientError::ReferencesUnknownMagicEffects(ing, _) => {
-                        self.get_key_for(&ing.get_global_form_id()).unwrap()
+                        ing.get_global_form_id()
                     }
                 })
                 .collect::<Vec<_>>()
