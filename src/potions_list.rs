@@ -5,7 +5,11 @@ use arrayvec::ArrayVec;
 use itertools::Itertools;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
-use crate::{game_data::GameData, potion::Potion};
+use crate::{
+    game_data::GameData,
+    plugin_parser::{form_id::FormIdContainer, ingredient::Ingredient},
+    potion::Potion,
+};
 
 pub struct PotionsList<'a> {
     game_data: &'a GameData,
@@ -13,17 +17,17 @@ pub struct PotionsList<'a> {
     potions_3: Vec<Potion<'a>>,
 }
 
-impl<'a> Serialize for PotionsList<'a> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let mut pl = serializer.serialize_struct("PotionsList", 2)?;
-        pl.serialize_field("potions_2", &self.potions_2)?;
-        pl.serialize_field("potions_3", &self.potions_3)?;
-        pl.end()
-    }
-}
+// impl<'a> Serialize for PotionsList<'a> {
+//     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+//     where
+//         S: Serializer,
+//     {
+//         let mut pl = serializer.serialize_struct("PotionsList", 2)?;
+//         pl.serialize_field("potions_2", &self.potions_2)?;
+//         pl.serialize_field("potions_3", &self.potions_3)?;
+//         pl.end()
+//     }
+// }
 
 impl<'a> PotionsList<'a> {
     /// Create a new `PotionsList` from the provided ingredients and magic effects.
@@ -39,17 +43,19 @@ impl<'a> PotionsList<'a> {
 
     /// Computes all possible potions
     pub fn build_potions(&mut self) {
-        self.build_potions_2();
-        self.build_potions_3();
+        let potions_2 = PotionsList::build_potions_2(self.game_data);
+        let potions_3 = PotionsList::build_potions_3(self.game_data);
+
+        self.potions_2 = potions_2;
+        self.potions_3 = potions_3;
     }
 
     /// Compute the Vec of potions with 2 ingredients
-    fn build_potions_2(&mut self) {
+    fn build_potions_2(game_data: &GameData) -> Vec<Potion> {
         // Note: temporarily storing the combinations and then using par_iter is about twice as
         // fast as using par_bridge directly on the combinations iterator (at the cost of some ram)
         let start = Instant::now();
-        let combos_2: Vec<_> = self
-            .game_data
+        let combos_2: Vec<_> = game_data
             .get_ingredients()
             .values()
             .sorted_by_key(|ig| &ig.name)
@@ -83,7 +89,7 @@ impl<'a> PotionsList<'a> {
             .par_iter()
             .map(|combo| {
                 let ingredients = ArrayVec::<_, 3>::from_iter(combo.iter().copied());
-                Potion::from_ingredients(&ingredients, self.game_data)
+                Potion::from_ingredients(&ingredients, game_data)
                     .expect("ingredients combo should be valid Potion")
             })
             .collect();
@@ -95,16 +101,15 @@ impl<'a> PotionsList<'a> {
             start.elapsed()
         );
 
-        self.potions_2 = potions_2;
+        potions_2
     }
 
     // Compute the Vec of potions with 3 ingredients
-    fn build_potions_3(&mut self) {
+    fn build_potions_3(game_data: &GameData) -> Vec<Potion> {
         //Note: temporarily storing the combinations and then using par_iter is about twice as
         //fast as using par_bridge directly on the combinations iterator (at the cost of some ram)
         let start = Instant::now();
-        let combos_3: Vec<_> = self
-            .game_data
+        let combos_3: Vec<_> = game_data
             .get_ingredients()
             .values()
             .sorted_by_key(|ig| &ig.name)
@@ -140,7 +145,7 @@ impl<'a> PotionsList<'a> {
             .par_iter()
             .map(|combo| {
                 let ingredients = ArrayVec::<_, 3>::from_iter(combo.iter().copied());
-                Potion::from_ingredients(&ingredients, self.game_data)
+                Potion::from_ingredients(&ingredients, game_data)
                     .expect("ingredients combo should be valid Potion")
             })
             .collect();
@@ -152,7 +157,7 @@ impl<'a> PotionsList<'a> {
             start.elapsed()
         );
 
-        self.potions_3 = potions_3;
+        potions_3
     }
 
     pub fn get_potions(&self) -> impl Iterator<Item = &Potion> + '_ {

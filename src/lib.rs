@@ -2,6 +2,7 @@
 
 use anyhow::{anyhow, Context};
 use itertools::Itertools;
+use load_order::LoadOrder;
 use log_err::{LogErrOption, LogErrResult};
 use nom::IResult;
 use skyrim_savegame::{read_vsval_to_u32, ChangeForm, FormIdType, SaveFile, VSVal};
@@ -12,6 +13,7 @@ use std::io::BufReader;
 use std::path::Path;
 
 use crate::game_data::GameData;
+use crate::plugin_parser::form_id::GlobalFormId;
 use crate::plugin_parser::utils::nom_err_to_anyhow_err;
 use crate::plugin_parser::{
     form_id::FormIdContainer, ingredient::Ingredient, magic_effect::MagicEffect,
@@ -19,6 +21,7 @@ use crate::plugin_parser::{
 use crate::potions_list::PotionsList;
 
 mod game_data;
+mod load_order;
 mod plugin_parser;
 mod potion;
 mod potions_list;
@@ -26,7 +29,7 @@ mod potions_list;
 fn get_load_order<PGame, PLocal>(
     game_path: PGame,
     local_path: Option<PLocal>,
-) -> Result<Vec<String>, anyhow::Error>
+) -> Result<LoadOrder, anyhow::Error>
 where
     PGame: AsRef<Path>,
     PLocal: AsRef<Path>,
@@ -47,12 +50,14 @@ where
         load_order.game_settings().active_plugins_file()
     );
     let active_plugin_names = load_order.active_plugin_names();
-    Ok(active_plugin_names.iter().map(|&s| s.into()).collect())
+    Ok(LoadOrder::new(
+        active_plugin_names.iter().map(|&s| s.into()).collect(),
+    ))
 }
 
 fn load_ingredients_and_effects_from_plugins<PGame>(
     game_path: PGame,
-    load_order: &Vec<String>,
+    load_order: LoadOrder,
 ) -> Result<GameData, anyhow::Error>
 where
     PGame: AsRef<Path>,
@@ -63,10 +68,9 @@ where
 
     let game_plugins_path = game_path.as_ref().join("Data");
 
-    // TODO: use &str instead of String for keys
-    let mut magic_effects = HashMap::<(String, u32), MagicEffect>::new();
-    let mut ingredients = HashMap::<(String, u32), Ingredient>::new();
-    let mut ingredient_effect_ids = HashSet::<(String, u32)>::new();
+    let mut magic_effects = HashMap::<GlobalFormId, MagicEffect>::new();
+    let mut ingredients = HashMap::<GlobalFormId, Ingredient>::new();
+    let mut ingredient_effect_ids = HashSet::<GlobalFormId>::new();
 
     for plugin_name in load_order.iter() {
         let plugin_path = game_plugins_path.join(plugin_name);
@@ -74,8 +78,12 @@ where
         let plugin_file = File::open(&plugin_path)?;
         // TODO: implement better (safer, streaming) file loading
         let plugin_mmap = unsafe { memmap2::MmapOptions::new().map(&plugin_file)? };
-        let (plugin_ingredients, plugin_magic_effects) =
-            plugin_parser::parse_plugin(&plugin_mmap, plugin_name, &game_plugins_path)?;
+        let (plugin_ingredients, plugin_magic_effects) = plugin_parser::parse_plugin(
+            &plugin_mmap,
+            plugin_name,
+            &game_plugins_path,
+            &load_order,
+        )?;
 
         log::debug!(
             "Plugin {:?} has {:?} ingredients and {:?} magic effects.",
@@ -87,7 +95,7 @@ where
         for plugin_magic_effect in plugin_magic_effects.into_iter() {
             // Insert into magic effects hashmap, overwriting existing entry from previous plugins
             magic_effects.insert(
-                plugin_magic_effect.get_global_form_id().to_owned_pair(),
+                plugin_magic_effect.get_global_form_id(),
                 plugin_magic_effect,
             );
         }
@@ -99,14 +107,11 @@ where
                 .iter()
                 .map(|eff| eff.get_global_form_id())
             {
-                ingredient_effect_ids.insert(plugin_ingredient_effect_id.to_owned_pair());
+                ingredient_effect_ids.insert(plugin_ingredient_effect_id);
             }
 
             // Insert into magic effects hashmap, overwriting existing entry from previous plugins
-            ingredients.insert(
-                plugin_ingredient.get_global_form_id().to_owned_pair(),
-                plugin_ingredient,
-            );
+            ingredients.insert(plugin_ingredient.get_global_form_id(), plugin_ingredient);
         }
     }
 
@@ -122,7 +127,7 @@ where
         magic_effects.len()
     );
 
-    let mut game_data = GameData::from_hashmaps(ingredients, magic_effects);
+    let mut game_data = GameData::from_hashmaps(load_order, ingredients, magic_effects);
     game_data.purge_invalid();
 
     Ok(game_data)
@@ -139,9 +144,9 @@ where
     PExport: AsRef<Path>,
 {
     let load_order = get_load_order(&game_path, local_path)?;
-    log::debug!("Load order:\n{:#?}", &load_order);
+    log::debug!("Load order:\n{}", &load_order);
 
-    let game_data = load_ingredients_and_effects_from_plugins(&game_path, &load_order)?;
+    let game_data = load_ingredients_and_effects_from_plugins(&game_path, load_order)?;
     let serialized_game_data = serde_json::to_string_pretty(&game_data).unwrap();
     fs::write(export_path, serialized_game_data)?;
 

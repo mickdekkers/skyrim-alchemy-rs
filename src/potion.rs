@@ -20,51 +20,57 @@ const MIN_INGREDIENTS: usize = 2;
 /// Maximum number of ingredients per potion
 const MAX_INGREDIENTS: usize = 3;
 
+/// Maximum number of effects per potion
+const MAX_EFFECTS: usize = 6;
+
 // TODO: read player alchemy skill and game settings to get real values (still excluding perks because mods)
 const EFFECT_POWER_FACTOR: f32 = 6.0;
 
+// TODO: re-implement Serialize
+
 // TODO: make generic over FormIdContainer trait
-fn ser_magic_effect_form_id<S>(x: &MagicEffect, s: S) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    s.serialize_u32(x.form_id)
-}
+// fn ser_magic_effect_form_id<S>(x: &MagicEffect, s: S) -> Result<S::Ok, S::Error>
+// where
+//     S: Serializer,
+// {
+//     s(x.get_global_form_id())
+// }
 
-fn ser_ingredients_vec<S>(x: &Vec<&Ingredient>, s: S) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    let mut seq = s.serialize_seq(Some(x.len()))?;
-    for item in x {
-        seq.serialize_element(&item.form_id)?;
-    }
-    seq.end()
-}
+// fn ser_ingredients_vec<S>(x: &Vec<&Ingredient>, s: S) -> Result<S::Ok, S::Error>
+// where
+//     S: Serializer,
+// {
+//     let mut seq = s.serialize_seq(Some(x.len()))?;
+//     for item in x {
+//         seq.serialize_element(&item.global_form_id)?;
+//     }
+//     seq.end()
+// }
 
-fn ser_once_cell_u32<S>(x: &OnceCell<u32>, s: S) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    // TODO: would be much nicer if we could call the getter here.
-    s.serialize_u32(
-        *x.get()
-            .expect("OnceCell must be filled before serialization"),
-    )
-}
+// fn ser_once_cell_u32<S>(x: &OnceCell<u32>, s: S) -> Result<S::Ok, S::Error>
+// where
+//     S: Serializer,
+// {
+//     // TODO: would be much nicer if we could call the getter here.
+//     s.serialize_u32(
+//         *x.get()
+//             .expect("OnceCell must be filled before serialization"),
+//     )
+// }
 
 /// This is basically an `IngredientEffect` with some extra data + a ref to its `MagicEffect`
-#[derive(Debug, Serialize)]
+#[derive(Debug)]
 pub struct PotionEffect<'a> {
-    #[serde(serialize_with = "ser_magic_effect_form_id")]
+    // #[serde(serialize_with = "ser_magic_effect_form_id")]
     pub magic_effect: &'a MagicEffect,
     base_magnitude: f32,
     base_duration: u32,
-    #[serde(serialize_with = "ser_once_cell_u32")]
+    // #[serde(serialize_with = "ser_once_cell_u32")]
     magnitude: OnceCell<u32>,
-    #[serde(serialize_with = "ser_once_cell_u32")]
+    // #[serde(serialize_with = "ser_once_cell_u32")]
     duration: OnceCell<u32>,
-    #[serde(serialize_with = "ser_once_cell_u32")]
+    // #[serde(serialize_with = "ser_once_cell_u32")]
+    // TODO: make u16, no potion is ever worth more than 65535 gold
     gold_value: OnceCell<u32>,
 }
 
@@ -166,25 +172,18 @@ impl<'a> PotionEffect<'a> {
 }
 
 impl<'a> FormIdContainer for PotionEffect<'a> {
-    fn get_local_form_id(&self) -> u32 {
-        self.magic_effect.form_id
-    }
-
     fn get_global_form_id(&self) -> crate::plugin_parser::form_id::GlobalFormId {
-        crate::plugin_parser::form_id::GlobalFormId::new(
-            self.magic_effect.mod_name.as_str(),
-            self.magic_effect.id,
-        )
+        self.magic_effect.get_global_form_id()
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug)]
 pub struct Potion<'a> {
-    #[serde(serialize_with = "ser_ingredients_vec")]
+    // #[serde(serialize_with = "ser_ingredients_vec")]
     pub ingredients: Vec<&'a Ingredient>,
     /// Potion's effects sorted by strength descending
     pub effects: Vec<PotionEffect<'a>>,
-    #[serde(serialize_with = "ser_once_cell_u32")]
+    // #[serde(serialize_with = "ser_once_cell_u32")]
     gold_value: OnceCell<u32>,
 }
 
@@ -310,6 +309,7 @@ impl<'a> Potion<'a> {
                     .cmp(&potef2.get_gold_value())
                     .reverse()
             })
+            .take(MAX_EFFECTS)
             .collect_vec();
 
         Ok(Self {

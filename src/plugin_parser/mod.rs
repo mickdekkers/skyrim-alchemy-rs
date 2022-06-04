@@ -1,13 +1,18 @@
 use std::{num::NonZeroU32, path::Path};
 
+use anyhow::anyhow;
 use esplugin::record::Record;
 use itertools::{Either, Itertools};
 
-use crate::plugin_parser::{
-    ingredient::Ingredient,
-    magic_effect::MagicEffect,
-    strings_table::StringsTable,
-    utils::{le_slice_to_u32, parse_lstring, parse_string, parse_zstring},
+use crate::{
+    load_order::LoadOrder,
+    plugin_parser::{
+        form_id::GlobalFormId,
+        ingredient::Ingredient,
+        magic_effect::MagicEffect,
+        strings_table::StringsTable,
+        utils::{le_slice_to_u32, parse_lstring, parse_string, parse_zstring},
+    },
 };
 
 use self::utils::nom_err_to_anyhow_err;
@@ -23,6 +28,7 @@ pub fn parse_plugin<'a>(
     input: &'a [u8],
     plugin_name: &str,
     game_plugins_path: &Path,
+    load_order: &LoadOrder,
 ) -> Result<(Vec<Ingredient>, Vec<MagicEffect>), anyhow::Error> {
     log::trace!("Parsing plugin {}", plugin_name);
 
@@ -57,23 +63,33 @@ pub fn parse_plugin<'a>(
         false => None,
     };
 
-    let get_master = |form_id: NonZeroU32| -> Option<String> {
+    let globalize_form_id = |form_id: NonZeroU32| -> Result<GlobalFormId, anyhow::Error> {
         // See https://en.uesp.net/wiki/Skyrim:Form_ID
         let mod_id = (u32::from(form_id) >> 24) as usize;
         let num_masters = masters.len();
 
         #[allow(clippy::comparison_chain)]
-        if mod_id == num_masters {
-            Some(String::from(plugin_name))
-        } else if mod_id < num_masters {
-            Some(masters[mod_id].clone())
-        } else {
-            log::error!(
-                "Invalid plugin: could not find master for form ID {:x}",
-                form_id
-            );
-            None
-        }
+        let mod_name = {
+            if mod_id == num_masters {
+                Ok(String::from(plugin_name))
+            } else if mod_id < num_masters {
+                Ok(masters[mod_id].clone())
+            } else {
+                Err(anyhow!(
+                    "record has invalid master reference in form ID {:x}",
+                    form_id
+                ))
+            }
+        }?;
+
+        // The last six hex digits are the ID of the record itself
+        let id = u32::from(form_id) & 0x00FFFFFF;
+
+        let load_order_index = load_order
+            .find_index(&mod_name)
+            .ok_or_else(|| anyhow!("plugin {} not found in load order!", &mod_name))?;
+
+        Ok(GlobalFormId::new(load_order_index, id))
     };
 
     let parse_lstring =
@@ -130,7 +146,7 @@ pub fn parse_plugin<'a>(
                         }
                     }
                 })
-                .map(|rec| Ingredient::parse(rec, get_master, parse_lstring))
+                .map(|rec| Ingredient::parse(rec, globalize_form_id, parse_lstring))
                 .partition_map(|r| match r {
                     Ok(v) => Either::Left(v),
                     Err(v) => Either::Right(v),
@@ -179,7 +195,7 @@ pub fn parse_plugin<'a>(
                         }
                     }
                 })
-                .map(|rec| MagicEffect::parse(rec, get_master, parse_lstring))
+                .map(|rec| MagicEffect::parse(rec, globalize_form_id, parse_lstring))
                 .partition_map(|r| match r {
                     Ok(v) => Either::Left(v),
                     Err(v) => Either::Right(v),
