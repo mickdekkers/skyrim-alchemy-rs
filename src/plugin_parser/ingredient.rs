@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use std::hash::Hash;
 
+use std::iter::Peekable;
 use std::num::NonZeroU32;
 
 use nom::number::complete::{le_f32, le_u32};
@@ -47,10 +48,19 @@ impl Ingredient {
 
     /// Returns whether the ingredient shares any effects with another ingredient (and thus can be combined)
     pub fn shares_effects_with(&self, other: &Ingredient) -> bool {
+        self.effects_shared_with(other).peek().is_some()
+    }
+
+    /// Returns an iterator of effects shared between this and another ingredient
+    pub fn effects_shared_with<'a>(
+        &'a self,
+        other: &'a Ingredient,
+    ) -> Peekable<impl Iterator<Item = &IngredientEffect> + '_> {
         // Note: effects vecs are sorted and (essentially) limited to 4 elements, so this shouldn't be too slow
         self.effects
             .iter()
-            .any(|self_effect| other.effects.iter().contains(self_effect))
+            .filter(|self_effect| other.effects.iter().contains(self_effect))
+            .peekable()
     }
 }
 

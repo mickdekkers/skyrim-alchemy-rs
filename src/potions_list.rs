@@ -1,5 +1,5 @@
 use serde::{ser::SerializeStruct, Serialize, Serializer};
-use std::time::Instant;
+use std::{collections::HashSet, time::Instant};
 
 use arrayvec::ArrayVec;
 use itertools::Itertools;
@@ -7,7 +7,10 @@ use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::{
     game_data::GameData,
-    plugin_parser::{form_id::FormIdContainer, ingredient::Ingredient},
+    plugin_parser::{
+        form_id::FormIdContainer,
+        ingredient::{Ingredient, IngredientEffect},
+    },
     potion::Potion,
 };
 
@@ -125,13 +128,71 @@ impl<'a> PotionsList<'a> {
         let valid_combos_3: Vec<_> = combos_3
             .par_iter()
             .filter(|combo| {
-                let a = combo.get(0).unwrap();
-                let b = combo.get(1).unwrap();
-                let c = combo.get(2).unwrap();
+                let a = *combo.get(0).unwrap();
+                let b = *combo.get(1).unwrap();
+                let c = *combo.get(2).unwrap();
 
-                // Ensure all three ingredients share an effect with at least one of the others
-                (a.shares_effects_with(b) && (c.shares_effects_with(a) || c.shares_effects_with(b)))
-                    || (a.shares_effects_with(c) && b.shares_effects_with(c))
+                let mut a_b_effects = a.effects_shared_with(b);
+                let mut b_c_effects = b.effects_shared_with(c);
+                let mut c_a_effects = c.effects_shared_with(a);
+
+                let a_shares_effects_with_b = a_b_effects.peek().is_some();
+                let b_shares_effects_with_c = b_c_effects.peek().is_some();
+                let c_shares_effects_with_a = c_a_effects.peek().is_some();
+
+                // We require at least two edges that contribute a unique effect (otherwise one of
+                // the ingredients is used for no reason and goes to waste)
+                //      a
+                //    /   \
+                //   c --- b
+                fn edges_are_not_the_same<'a, T>(edge_1: T, edge_2: T, edge_3: Option<T>) -> bool
+                where
+                    T: Iterator<Item = &'a IngredientEffect>,
+                {
+                    // Note: this function assumes the iterators are not empty
+                    let edge_1 = edge_1
+                        .map(|eff| eff.get_global_form_id())
+                        .collect::<HashSet<_>>();
+                    let edge_2 = edge_2
+                        .map(|eff| eff.get_global_form_id())
+                        .collect::<HashSet<_>>();
+                    let edge_3 = edge_3.map(|edge_3| {
+                        edge_3
+                            .map(|eff| eff.get_global_form_id())
+                            .collect::<HashSet<_>>()
+                    });
+
+                    // Each ingredient must contribute at least one unique effect when combined
+                    // with the others
+                    if let Some(edge_3) = edge_3 {
+                        let edges_1_2_have_diff =
+                            edge_1.symmetric_difference(&edge_2).next().is_some();
+                        let edges_2_3_have_diff =
+                            edge_2.symmetric_difference(&edge_3).next().is_some();
+                        let edges_3_1_have_diff =
+                            edge_3.symmetric_difference(&edge_1).next().is_some();
+
+                        (edges_1_2_have_diff && (edges_3_1_have_diff || edges_2_3_have_diff))
+                            || (edges_3_1_have_diff && edges_2_3_have_diff)
+                    } else {
+                        edge_1.symmetric_difference(&edge_2).next().is_some()
+                    }
+                }
+
+                match (
+                    a_shares_effects_with_b,
+                    b_shares_effects_with_c,
+                    c_shares_effects_with_a,
+                ) {
+                    (true, true, false) => edges_are_not_the_same(a_b_effects, b_c_effects, None),
+                    (true, false, true) => edges_are_not_the_same(a_b_effects, c_a_effects, None),
+                    (false, true, true) => edges_are_not_the_same(b_c_effects, c_a_effects, None),
+                    (true, true, true) => {
+                        edges_are_not_the_same(a_b_effects, b_c_effects, Some(c_a_effects))
+                    }
+                    // Anything else does not have at least 2 edges
+                    (_, _, _) => false,
+                }
             })
             .collect();
         log::debug!(
