@@ -3,7 +3,10 @@ use std::{collections::HashSet, time::Instant};
 
 use arrayvec::ArrayVec;
 use itertools::Itertools;
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use rayon::{
+    iter::{IntoParallelRefIterator, ParallelIterator},
+    slice::ParallelSliceMut,
+};
 
 use crate::{
     game_data::GameData,
@@ -96,10 +99,17 @@ impl<'a> PotionsList<'a> {
                     .expect("ingredients combo should be valid Potion")
             })
             .collect();
-        potions_2.sort_by_key(|pot| pot.get_gold_value());
-        potions_2.reverse();
         log::debug!(
             "Created {} Potion instances (in {:?})",
+            potions_2.len(),
+            start.elapsed()
+        );
+        let start = Instant::now();
+        // Sort (unstably) in parallel by gold value descending
+        potions_2
+            .par_sort_unstable_by(|a, b| a.get_gold_value().cmp(&b.get_gold_value()).reverse());
+        log::debug!(
+            "Sorted {} Potion instances (in {:?})",
             potions_2.len(),
             start.elapsed()
         );
@@ -109,8 +119,9 @@ impl<'a> PotionsList<'a> {
 
     // Compute the Vec of potions with 3 ingredients
     fn build_potions_3(game_data: &GameData) -> Vec<Potion> {
-        //Note: temporarily storing the combinations and then using par_iter is about twice as
-        //fast as using par_bridge directly on the combinations iterator (at the cost of some ram)
+        // TODO: see if it might be possible to generate the combinations in parallel somehow
+        // Note: temporarily storing the combinations and then using par_iter is about twice as
+        // fast as using par_bridge directly on the combinations iterator (at the cost of some ram)
         let start = Instant::now();
         let combos_3: Vec<_> = game_data
             .get_ingredients()
@@ -210,10 +221,17 @@ impl<'a> PotionsList<'a> {
                     .expect("ingredients combo should be valid Potion")
             })
             .collect();
-        potions_3.sort_by_key(|pot| pot.get_gold_value());
-        potions_3.reverse();
         log::debug!(
             "Created {} Potion instances (in {:?})",
+            potions_3.len(),
+            start.elapsed()
+        );
+        let start = Instant::now();
+        // Sort (unstably) in parallel by gold value descending
+        potions_3
+            .par_sort_unstable_by(|a, b| a.get_gold_value().cmp(&b.get_gold_value()).reverse());
+        log::debug!(
+            "Sorted {} Potion instances (in {:?})",
             potions_3.len(),
             start.elapsed()
         );
