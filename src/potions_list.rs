@@ -3,6 +3,7 @@ use std::{collections::HashSet, time::Instant};
 
 use arrayvec::ArrayVec;
 use itertools::Itertools;
+use permutator::LargeCombinationIterator;
 use rayon::{
     iter::{IntoParallelRefIterator, ParallelIterator},
     slice::ParallelSliceMut,
@@ -58,15 +59,16 @@ impl<'a> PotionsList<'a> {
 
     /// Compute the Vec of potions with 2 ingredients
     fn build_potions_2(game_data: &GameData) -> Vec<Potion> {
+        // TODO: recheck this note
         // Note: temporarily storing the combinations and then using par_iter is about twice as
         // fast as using par_bridge directly on the combinations iterator (at the cost of some ram)
         let start = Instant::now();
-        let combos_2: Vec<_> = game_data
+        let ingredients = game_data
             .get_ingredients()
             .values()
             .sorted_by_key(|ig| &ig.name)
-            .combinations(2)
-            .collect();
+            .collect::<Vec<_>>();
+        let combos_2: Vec<_> = LargeCombinationIterator::new(&ingredients, 2).collect::<Vec<_>>();
         log::debug!(
             "Found {} possible 2-ingredient combos (in {:?})",
             combos_2.len(),
@@ -94,7 +96,7 @@ impl<'a> PotionsList<'a> {
         let mut potions_2: Vec<_> = valid_combos_2
             .par_iter()
             .map(|combo| {
-                let ingredients = ArrayVec::<_, 3>::from_iter(combo.iter().copied());
+                let ingredients = ArrayVec::<_, 3>::from_iter(combo.iter().copied().copied());
                 Potion::from_ingredients(&ingredients, game_data)
                     .expect("ingredients combo should be valid Potion")
             })
@@ -119,15 +121,16 @@ impl<'a> PotionsList<'a> {
     // Compute the Vec of potions with 3 ingredients
     fn build_potions_3(game_data: &GameData) -> Vec<Potion> {
         // TODO: see if it might be possible to generate the combinations in parallel somehow
+        // TODO: recheck this note
         // Note: temporarily storing the combinations and then using par_iter is about twice as
         // fast as using par_bridge directly on the combinations iterator (at the cost of some ram)
         let start = Instant::now();
-        let combos_3: Vec<_> = game_data
+        let ingredients = game_data
             .get_ingredients()
             .values()
             .sorted_by_key(|ig| &ig.name)
-            .combinations(3)
-            .collect();
+            .collect::<Vec<_>>();
+        let combos_3: Vec<_> = LargeCombinationIterator::new(&ingredients, 3).collect::<Vec<_>>();
         log::debug!(
             "Found {} possible 3-ingredient combos (in {:?})",
             combos_3.len(),
@@ -215,7 +218,7 @@ impl<'a> PotionsList<'a> {
         let mut potions_3: Vec<_> = valid_combos_3
             .par_iter()
             .map(|combo| {
-                let ingredients = ArrayVec::<_, 3>::from_iter(combo.iter().copied());
+                let ingredients = ArrayVec::<_, 3>::from_iter(combo.iter().copied().copied());
                 Potion::from_ingredients(&ingredients, game_data)
                     .expect("ingredients combo should be valid Potion")
             })
