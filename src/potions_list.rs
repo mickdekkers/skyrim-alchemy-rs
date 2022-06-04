@@ -106,8 +106,7 @@ impl<'a> PotionsList<'a> {
         );
         let start = Instant::now();
         // Sort (unstably) in parallel by gold value descending
-        potions_2
-            .par_sort_unstable_by(|a, b| a.get_gold_value().cmp(&b.get_gold_value()).reverse());
+        potions_2.par_sort_unstable_by(|a, b| a.gold_value.cmp(&b.gold_value).reverse());
         log::debug!(
             "Sorted {} Potion instances (in {:?})",
             potions_2.len(),
@@ -228,8 +227,7 @@ impl<'a> PotionsList<'a> {
         );
         let start = Instant::now();
         // Sort (unstably) in parallel by gold value descending
-        potions_3
-            .par_sort_unstable_by(|a, b| a.get_gold_value().cmp(&b.get_gold_value()).reverse());
+        potions_3.par_sort_unstable_by(|a, b| a.gold_value.cmp(&b.gold_value).reverse());
         log::debug!(
             "Sorted {} Potion instances (in {:?})",
             potions_3.len(),
@@ -243,8 +241,6 @@ impl<'a> PotionsList<'a> {
         // Return an iterator over the two potions vecs merged in order of gold value descending
         self.potions_3
             .iter()
-            .merge_by(self.potions_2.iter(), |a, b| {
-                a.get_gold_value() > b.get_gold_value()
-            })
+            .merge_by(self.potions_2.iter(), |a, b| a.gold_value > b.gold_value)
     }
 }

@@ -2,7 +2,6 @@ use std::{cmp::max, collections::HashMap, fmt::Display};
 
 use arrayvec::ArrayVec;
 use itertools::Itertools;
-use once_cell::sync::OnceCell;
 
 use crate::{
     game_data::GameData,
@@ -36,138 +35,110 @@ const EFFECT_POWER_FACTOR: f32 = 6.0;
 //     s(x.get_global_form_id())
 // }
 
-// fn ser_ingredients_vec<S>(x: &Vec<&Ingredient>, s: S) -> Result<S::Ok, S::Error>
-// where
-//     S: Serializer,
-// {
-//     let mut seq = s.serialize_seq(Some(x.len()))?;
-//     for item in x {
-//         seq.serialize_element(&item.global_form_id)?;
-//     }
-//     seq.end()
-// }
-
-// fn ser_once_cell_u32<S>(x: &OnceCell<u32>, s: S) -> Result<S::Ok, S::Error>
-// where
-//     S: Serializer,
-// {
-//     // TODO: would be much nicer if we could call the getter here.
-//     s.serialize_u32(
-//         *x.get()
-//             .expect("OnceCell must be filled before serialization"),
-//     )
-// }
-
 /// This is basically an `IngredientEffect` with some extra data + a ref to its `MagicEffect`
 #[derive(Debug)]
 pub struct PotionEffect<'a> {
     // #[serde(serialize_with = "ser_magic_effect_form_id")]
     pub magic_effect: &'a MagicEffect,
-    base_magnitude: f32,
-    base_duration: u32,
     // #[serde(serialize_with = "ser_once_cell_u32")]
-    magnitude: OnceCell<u32>,
+    magnitude: u32,
     // #[serde(serialize_with = "ser_once_cell_u32")]
-    duration: OnceCell<u32>,
+    duration: u32,
     // #[serde(serialize_with = "ser_once_cell_u32")]
-    // TODO: make u16, no potion is ever worth more than 65535 gold
-    gold_value: OnceCell<u32>,
+    // This is a u16 because in practice no single potion effect is worth more than 65535
+    gold_value: u16,
 }
 
 // TODO: use enums for all the various flags
 
 impl<'a> PotionEffect<'a> {
     pub fn from_ingredient_effect(igef: &'a IngredientEffect, game_data: &'a GameData) -> Self {
+        let magic_effect = game_data
+            .get_magic_effect(&igef.get_global_form_id())
+            .unwrap();
+        let magnitude = PotionEffect::calc_magnitude(igef.magnitude, magic_effect.flags);
+        let duration = PotionEffect::calc_duration(igef.duration, magic_effect.flags);
+        let gold_value = PotionEffect::calc_gold_value(magnitude, duration, magic_effect.base_cost);
+
         PotionEffect {
-            base_duration: igef.duration,
-            base_magnitude: igef.magnitude,
-            magic_effect: game_data
-                .get_magic_effect(&igef.get_global_form_id())
-                .unwrap(),
-            duration: OnceCell::new(),
-            magnitude: OnceCell::new(),
-            gold_value: OnceCell::new(),
+            magic_effect,
+            duration,
+            magnitude,
+            gold_value,
         }
     }
 
     /// Returns the actual magnitude, taking into account various factors
     ///
     /// Note: this does not currently include every factor so it won't be fully accurate
-    pub fn get_magnitude(&self) -> u32 {
-        *self.magnitude.get_or_init(|| {
-            let magnitude = {
-                // "No magnitude" flag
-                if self.magic_effect.flags & 0x00000400 != 0 {
-                    0.0
-                } else {
-                    self.base_magnitude
-                }
-            };
+    fn calc_magnitude(base_magnitude: f32, magic_effect_flags: u32) -> u32 {
+        let magnitude = {
+            // "No magnitude" flag
+            if magic_effect_flags & 0x00000400 != 0 {
+                0.0
+            } else {
+                base_magnitude
+            }
+        };
 
-            let magnitude_factor = {
-                // "Power affects magnitude" flag
-                if self.magic_effect.flags & 0x00200000 != 0 {
-                    EFFECT_POWER_FACTOR
-                } else {
-                    1.0
-                }
-            };
+        let magnitude_factor = {
+            // "Power affects magnitude" flag
+            if magic_effect_flags & 0x00200000 != 0 {
+                EFFECT_POWER_FACTOR
+            } else {
+                1.0
+            }
+        };
 
-            f32::round(magnitude * magnitude_factor) as u32
-        })
+        f32::round(magnitude * magnitude_factor) as u32
     }
 
     /// Returns the actual duration, taking into account various factors
     ///
     /// Note: this does not currently include every factor so it won't be fully accurate
-    pub fn get_duration(&self) -> u32 {
-        *self.duration.get_or_init(|| {
-            let duration = {
-                // "No duration" flag
-                if self.magic_effect.flags & 0x00000200 != 0 {
-                    0.0
-                } else {
-                    self.base_duration as f32
-                }
-            };
+    pub fn calc_duration(base_duration: u32, magic_effect_flags: u32) -> u32 {
+        let duration = {
+            // "No duration" flag
+            if magic_effect_flags & 0x00000200 != 0 {
+                0.0
+            } else {
+                base_duration as f32
+            }
+        };
 
-            let duration_factor = {
-                // "Power affects duration" flag
-                if self.magic_effect.flags & 0x00400000 != 0 {
-                    EFFECT_POWER_FACTOR
-                } else {
-                    1.0
-                }
-            };
+        let duration_factor = {
+            // "Power affects duration" flag
+            if magic_effect_flags & 0x00400000 != 0 {
+                EFFECT_POWER_FACTOR
+            } else {
+                1.0
+            }
+        };
 
-            f32::round(duration * duration_factor) as u32
-        })
+        f32::round(duration * duration_factor) as u32
     }
 
     /// Returns the gold value of this effect with its magnitude and duration factored in
-    pub fn get_gold_value(&self) -> u32 {
-        *self.gold_value.get_or_init(|| {
-            // See https://en.uesp.net/wiki/Skyrim_Mod:Mod_File_Format/INGR
-            // and https://en.uesp.net/wiki/Skyrim:Alchemy_Effects#Strength_Equations
-            let magnitude_factor = max(self.get_magnitude(), 1) as f32;
-            let duration_factor: f32 = {
-                let duration = self.get_duration();
-                (match duration {
-                    // A duration of 0 is treated as 10
-                    0 => 10.0,
-                    _ => duration as f32,
-                }) / 10.0
-            };
+    pub fn calc_gold_value(magnitude: u32, duration: u32, magic_effect_base_cost: f32) -> u16 {
+        // See https://en.uesp.net/wiki/Skyrim_Mod:Mod_File_Format/INGR
+        // and https://en.uesp.net/wiki/Skyrim:Alchemy_Effects#Strength_Equations
+        let magnitude_factor = max(magnitude, 1) as f32;
+        let duration_factor: f32 = {
+            (match duration {
+                // A duration of 0 is treated as 10
+                0 => 10.0,
+                _ => duration as f32,
+            }) / 10.0
+        };
 
-            (self.magic_effect.base_cost * (magnitude_factor * duration_factor).powf(1.1)) as u32
-        })
+        (magic_effect_base_cost * (magnitude_factor * duration_factor).powf(1.1)) as u16
     }
 
     pub fn get_description(&self) -> String {
         self.magic_effect
             .description
-            .replace("<mag>", &self.get_magnitude().to_string())
-            .replace("<dur>", &self.get_duration().to_string())
+            .replace("<mag>", &self.magnitude.to_string())
+            .replace("<dur>", &self.duration.to_string())
     }
 }
 
@@ -184,7 +155,8 @@ pub struct Potion<'a> {
     /// Potion's effects sorted by strength descending
     pub effects: Vec<PotionEffect<'a>>,
     // #[serde(serialize_with = "ser_once_cell_u32")]
-    gold_value: OnceCell<u32>,
+    // This is a u16 because in practice no single potion is worth more than 65535
+    pub gold_value: u16,
 }
 
 impl<'a> Display for Potion<'a> {
@@ -194,7 +166,7 @@ impl<'a> Display for Potion<'a> {
             "{}\n{}\nValue: {} gold\nIngredients:\n{}",
             self.get_potion_name(),
             self.get_potion_description(),
-            self.get_gold_value(),
+            self.gold_value,
             self.ingredients
                 .iter()
                 .map(|ig| String::from("- ")
@@ -233,11 +205,9 @@ impl Display for PotionType {
 }
 
 impl<'a> Potion<'a> {
-    pub fn get_gold_value(&self) -> u32 {
-        *self.gold_value.get_or_init(|| {
-            // See https://en.uesp.net/wiki/Skyrim:Alchemy_Effects#Multiple-Effect_Potions
-            self.effects.iter().map(|eff| eff.get_gold_value()).sum()
-        })
+    fn calc_gold_value(effects: &[PotionEffect]) -> u16 {
+        // See https://en.uesp.net/wiki/Skyrim:Alchemy_Effects#Multiple-Effect_Potions
+        effects.iter().map(|eff| eff.gold_value).sum()
     }
 
     pub fn from_ingredients(
@@ -292,7 +262,7 @@ impl<'a> Potion<'a> {
                 if potef1.get_global_form_id() == potef2.get_global_form_id() {
                     // Select most valuable (strongest) version of each effect
                     Ok({
-                        if potef1.get_gold_value() >= potef2.get_gold_value() {
+                        if potef1.gold_value >= potef2.gold_value {
                             potef1
                         } else {
                             potef2
@@ -304,18 +274,17 @@ impl<'a> Potion<'a> {
             })
             .sorted_by(|potef1, potef2| {
                 // Sort by gold value from largest to smallest
-                potef1
-                    .get_gold_value()
-                    .cmp(&potef2.get_gold_value())
-                    .reverse()
+                potef1.gold_value.cmp(&potef2.gold_value).reverse()
             })
             .take(MAX_EFFECTS)
             .collect_vec();
 
+        let gold_value = Potion::calc_gold_value(&active_effects);
+
         Ok(Self {
             effects: active_effects,
             ingredients: ingredients.iter().copied().collect_vec(),
-            gold_value: OnceCell::new(),
+            gold_value,
         })
     }
 
