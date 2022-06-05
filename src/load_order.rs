@@ -42,7 +42,6 @@ impl LoadOrder {
         self.load_order.iter()
     }
 
-    // FIXME: for some reason does not remove all unused entries in one call
     /// Removes unused entries from the LoadOrder based on the used indexes returned by the iterator
     /// that is passed in. Returns a HashMap of old index to new index which must be used to update
     /// any existing indexes into the LoadOrder.
