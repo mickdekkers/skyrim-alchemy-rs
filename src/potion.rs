@@ -151,9 +151,9 @@ impl<'a> FormIdContainer for PotionEffect<'a> {
 #[derive(Debug)]
 pub struct Potion<'a> {
     // #[serde(serialize_with = "ser_ingredients_vec")]
-    pub ingredients: Vec<&'a Ingredient>,
+    pub ingredients: ArrayVec<&'a Ingredient, MAX_INGREDIENTS>,
     /// Potion's effects sorted by strength descending
-    pub effects: Vec<PotionEffect<'a>>,
+    pub effects: ArrayVec<PotionEffect<'a>, MAX_EFFECTS>,
     // #[serde(serialize_with = "ser_once_cell_u32")]
     // This is a u16 because in practice no single potion is worth more than 65535
     pub gold_value: u16,
@@ -211,7 +211,7 @@ impl<'a> Potion<'a> {
     }
 
     pub fn from_ingredients(
-        ingredients: &ArrayVec<&'a Ingredient, MAX_INGREDIENTS>,
+        ingredients: ArrayVec<&'a Ingredient, MAX_INGREDIENTS>,
         game_data: &'a GameData,
     ) -> Result<Self, PotionCraftError<'a>> {
         if ingredients.len() < MIN_INGREDIENTS {
@@ -277,13 +277,13 @@ impl<'a> Potion<'a> {
                 potef1.gold_value.cmp(&potef2.gold_value).reverse()
             })
             .take(MAX_EFFECTS)
-            .collect_vec();
+            .collect::<ArrayVec<_, MAX_EFFECTS>>();
 
         let gold_value = Potion::calc_gold_value(&active_effects);
 
         Ok(Self {
             effects: active_effects,
-            ingredients: ingredients.iter().copied().collect_vec(),
+            ingredients,
             gold_value,
         })
     }

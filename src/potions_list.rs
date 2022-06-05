@@ -98,7 +98,7 @@ impl<'a> PotionsList<'a> {
             .par_iter()
             .map(|combo| {
                 let ingredients = ArrayVec::<_, 3>::from_iter(combo.iter().copied().copied());
-                Potion::from_ingredients(&ingredients, game_data)
+                Potion::from_ingredients(ingredients, game_data)
                     .expect("ingredients combo should be valid Potion")
             })
             .collect();
@@ -220,7 +220,7 @@ impl<'a> PotionsList<'a> {
             .par_iter()
             .map(|combo| {
                 let ingredients = ArrayVec::<_, 3>::from_iter(combo.iter().copied().copied());
-                Potion::from_ingredients(&ingredients, game_data)
+                Potion::from_ingredients(ingredients, game_data)
                     .expect("ingredients combo should be valid Potion")
             })
             .collect();

@@ -1,4 +1,5 @@
 use anyhow::anyhow;
+use arrayvec::ArrayVec;
 use itertools::Itertools;
 use nom::error::ErrorKind;
 use serde::{Deserialize, Serialize};
@@ -23,7 +24,7 @@ pub struct Ingredient {
     pub global_form_id: GlobalFormId,
     pub editor_id: String,
     pub name: Option<String>,
-    pub effects: Vec<IngredientEffect>,
+    pub effects: ArrayVec<IngredientEffect, 4>,
 }
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
@@ -122,7 +123,7 @@ where
         .map(|s| parse_lstring(s.data()));
 
     // TODO: cap to 4
-    let mut effects = Vec::new();
+    let mut effects = ArrayVec::<_, 4>::new();
     let mut current_effect_id = None;
     for sr in record
         .subrecords()
@@ -148,11 +149,11 @@ where
                     let global_form_id = globalize_form_id(
                         std::num::NonZeroU32::new(efid).expect("expected EFID to be non-zero"),
                     )?;
-                    effects.push(IngredientEffect {
+                    effects.try_push(IngredientEffect {
                         global_form_id,
                         duration,
                         magnitude,
-                    });
+                    })?;
                 } else {
                     Err(anyhow!(
                         "Error parsing effects of ingredient record {}: EFIT appeared before EFID",
