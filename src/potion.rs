@@ -176,18 +176,18 @@ impl<'a> Display for Potion<'a> {
     }
 }
 
-#[derive(thiserror::Error, Debug)]
-pub enum PotionCraftError<'a> {
-    #[error("cannot use the same ingredient more than once in a potion")]
-    DuplicateIngredient(&'a Ingredient),
-    // TODO: since this shouldn't happen with valid game data, panic instead?
-    #[error("ingredient has invalid data (duplicate effects)")]
-    InvalidIngredient(&'a Ingredient),
-    #[error("must supply at least two ingredients")]
-    NotEnoughIngredients,
-    #[error("none of the ingredients have a shared effect")]
-    NoSharedEffects,
-}
+// #[derive(thiserror::Error, Debug)]
+// pub enum PotionCraftError<'a> {
+//     #[error("cannot use the same ingredient more than once in a potion")]
+//     DuplicateIngredient(&'a Ingredient),
+//     // TODO: since this shouldn't happen with valid game data, panic instead?
+//     #[error("ingredient has invalid data (duplicate effects)")]
+//     InvalidIngredient(&'a Ingredient),
+//     #[error("must supply at least two ingredients")]
+//     NotEnoughIngredients,
+//     #[error("none of the ingredients have a shared effect")]
+//     NoSharedEffects,
+// }
 
 #[derive(Debug)]
 pub enum PotionType {
@@ -210,27 +210,38 @@ impl<'a> Potion<'a> {
         effects.iter().map(|eff| eff.gold_value).sum()
     }
 
-    pub fn from_ingredients(
+    /// Constructs a potion from the given ingredients.
+    /// For performance, does not perform any checks on the input. The caller is responsible for
+    /// only passing valid combinations. Input must:
+    ///
+    /// - Contain at least two ingredients (and at most three, but this is enforced at type level)
+    /// - Not contain duplicate ingredients
+    /// - Not contain ingredients with duplicate effects
+    /// - Not contain ingredients that don't share any effects
+    ///
+    /// Input that fails the above criteria may produce a nonsensical Potion.
+    pub fn from_ingredients_unchecked(
         ingredients: ArrayVec<&'a Ingredient, MAX_INGREDIENTS>,
         game_data: &'a GameData,
-    ) -> Result<Self, PotionCraftError<'a>> {
-        if ingredients.len() < MIN_INGREDIENTS {
-            return Err(PotionCraftError::NotEnoughIngredients);
-        }
+    ) -> Self {
+        // TODO: use conditional compilation to bring back the old from_ingredients too?
+        // if ingredients.len() < MIN_INGREDIENTS {
+        //     return Err(PotionCraftError::NotEnoughIngredients);
+        // }
 
-        if let Some(dup) = ingredients.iter().duplicates().next() {
-            return Err(PotionCraftError::DuplicateIngredient(dup));
-        }
+        // if let Some(dup) = ingredients.iter().duplicates().next() {
+        //     return Err(PotionCraftError::DuplicateIngredient(dup));
+        // }
 
-        if let Some(ing_with_dup_effects) = ingredients.iter().find(|ig| {
-            ig.effects
-                .iter()
-                .duplicates_by(|igef| igef.get_global_form_id())
-                .count()
-                > 0
-        }) {
-            return Err(PotionCraftError::InvalidIngredient(ing_with_dup_effects));
-        }
+        // if let Some(ing_with_dup_effects) = ingredients.iter().find(|ig| {
+        //     ig.effects
+        //         .iter()
+        //         .duplicates_by(|igef| igef.get_global_form_id())
+        //         .count()
+        //         > 0
+        // }) {
+        //     return Err(PotionCraftError::InvalidIngredient(ing_with_dup_effects));
+        // }
 
         let ingredients_effects = ingredients
             .iter()
@@ -244,9 +255,9 @@ impl<'a> Potion<'a> {
             .iter()
             .counts_by(|igef| igef.get_global_form_id());
 
-        if ingredients_effects_counts.values().all(|count| *count < 2) {
-            return Err(PotionCraftError::NoSharedEffects);
-        }
+        // if ingredients_effects_counts.values().all(|count| *count < 2) {
+        //     return Err(PotionCraftError::NoSharedEffects);
+        // }
 
         // active effects are those that appear in more than one ingredient
         let active_effects = ingredients_effects
@@ -281,11 +292,11 @@ impl<'a> Potion<'a> {
 
         let gold_value = Potion::calc_gold_value(&active_effects);
 
-        Ok(Self {
+        Self {
             effects: active_effects,
             ingredients,
             gold_value,
-        })
+        }
     }
 
     pub fn get_primary_effect(&self) -> &PotionEffect<'a> {
