@@ -4,7 +4,10 @@ use serde::{
     ser::SerializeStruct,
     Deserialize, Deserializer, Serialize, Serializer,
 };
-use std::{collections::HashMap, fmt};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt,
+};
 
 use crate::{
     load_order::LoadOrder,
@@ -175,10 +178,45 @@ impl<'de> Deserialize<'de> for GameData {
 
 impl GameData {
     pub fn from_hashmaps(
-        load_order: LoadOrder,
-        ingredients: HashMap<GlobalFormId, Ingredient>,
-        magic_effects: HashMap<GlobalFormId, MagicEffect>,
+        mut load_order: LoadOrder,
+        mut ingredients: HashMap<GlobalFormId, Ingredient>,
+        mut magic_effects: HashMap<GlobalFormId, MagicEffect>,
     ) -> Self {
+        // Remove unused entries from the load order
+        let used_indexes = ingredients
+            .keys()
+            .chain(magic_effects.keys())
+            .map(|k| k.load_order_index);
+        let index_remap_data = load_order.drain_unused(used_indexes);
+
+        // Remap load order indexes in ingredient global form IDs
+        for ingredient in ingredients.values_mut() {
+            let new_index = *index_remap_data
+                .get(&ingredient.global_form_id.load_order_index)
+                .unwrap();
+            ingredient.global_form_id.set_load_order_index(new_index);
+        }
+
+        // Create new ingredients hashmap with remapped global form IDs
+        let ingredients = ingredients
+            .into_iter()
+            .map(|(_k, v)| (v.get_global_form_id(), v))
+            .collect();
+
+        // Remap load order indexes in magic_effect global form IDs
+        for magic_effect in magic_effects.values_mut() {
+            let new_index = *index_remap_data
+                .get(&magic_effect.global_form_id.load_order_index)
+                .unwrap();
+            magic_effect.global_form_id.set_load_order_index(new_index);
+        }
+
+        // Create new magic_effects hashmap with remapped global form IDs
+        let magic_effects = magic_effects
+            .into_iter()
+            .map(|(_k, v)| (v.get_global_form_id(), v))
+            .collect();
+
         Self {
             load_order,
             ingredients,
@@ -188,14 +226,42 @@ impl GameData {
 
     pub fn from_vecs(
         load_order: Vec<String>,
-        ingredients: Vec<Ingredient>,
-        magic_effects: Vec<MagicEffect>,
+        mut ingredients: Vec<Ingredient>,
+        mut magic_effects: Vec<MagicEffect>,
     ) -> Self {
-        let load_order = LoadOrder::new(load_order);
+        let mut load_order = LoadOrder::new(load_order);
+
+        // Remove unused entries from the load order
+        let used_indexes = ingredients
+            .iter()
+            .map(|x| x.get_global_form_id())
+            .chain(magic_effects.iter().map(|x| x.get_global_form_id()))
+            .map(|x| x.load_order_index);
+        let index_remap_data = load_order.drain_unused(used_indexes);
+
+        // Remap load order indexes in ingredient global form IDs
+        for ingredient in ingredients.iter_mut() {
+            let new_index = *index_remap_data
+                .get(&ingredient.global_form_id.load_order_index)
+                .unwrap();
+            ingredient.global_form_id.set_load_order_index(new_index);
+        }
+
+        // Create new ingredients hashmap with remapped global form IDs
         let ingredients = ingredients
             .into_iter()
             .map(|ing| (ing.get_global_form_id(), ing))
             .collect();
+
+        // Remap load order indexes in magic_effect global form IDs
+        for magic_effect in magic_effects.iter_mut() {
+            let new_index = *index_remap_data
+                .get(&magic_effect.global_form_id.load_order_index)
+                .unwrap();
+            magic_effect.global_form_id.set_load_order_index(new_index);
+        }
+
+        // Create new magic_effects hashmap with remapped global form IDs
         let magic_effects = magic_effects
             .into_iter()
             .map(|mgef| (mgef.get_global_form_id(), mgef))

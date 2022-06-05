@@ -1,4 +1,4 @@
-#![feature(hash_drain_filter)]
+#![feature(hash_drain_filter, drain_filter)]
 
 use anyhow::{anyhow, Context};
 use itertools::Itertools;

@@ -1,6 +1,7 @@
 use itertools::{EitherOrBoth::*, Itertools};
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -10,7 +11,9 @@ pub struct LoadOrder {
 
 impl LoadOrder {
     pub fn new(load_order: Vec<String>) -> Self {
-        Self { load_order }
+        Self {
+            load_order: load_order.into_iter().collect::<Vec<_>>(),
+        }
     }
 
     pub fn find_index(&self, mod_name: &str) -> Option<u16> {
@@ -34,8 +37,34 @@ impl LoadOrder {
         self.load_order.is_empty()
     }
 
-    pub fn iter(&self) -> std::slice::Iter<String> {
+    pub fn iter(&self) -> impl Iterator<Item = &String> + '_ {
         self.load_order.iter()
+    }
+
+    // FIXME: for some reason does not remove all unused entries in one call
+    /// Removes unused entries from the LoadOrder based on the used indexes returned by the iterator
+    /// that is passed in. Returns a HashMap of old index to new index which must be used to update
+    /// any existing indexes into the LoadOrder.
+    #[must_use]
+    pub fn drain_unused(&mut self, used_indexes: impl Iterator<Item = u16>) -> HashMap<u16, u16> {
+        let used_entries_with_old_indexes = used_indexes
+            .sorted_unstable()
+            .dedup()
+            .map(|index| (self.get(index).unwrap().to_string(), index))
+            .collect::<HashMap<String, u16>>();
+
+        let num_removed = self
+            .load_order
+            .drain_filter(|entry| !used_entries_with_old_indexes.contains_key(entry))
+            .count();
+
+        log::debug!("Removed {} unused entries from load order", num_removed);
+
+        used_entries_with_old_indexes
+            .iter()
+            // Create map from old index to new index
+            .map(|(entry, old_index)| (*old_index, self.find_index(entry).unwrap()))
+            .collect()
     }
 }
 
@@ -47,7 +76,7 @@ impl Display for LoadOrder {
             self.load_order
                 .iter()
                 .enumerate()
-                .map(|(index, item)| format!("{:04}: {}", index, item))
+                .map(|(index, entry)| format!("{:04}: {}", index, entry))
                 .join("\n")
         )
     }

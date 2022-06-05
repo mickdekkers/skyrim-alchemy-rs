@@ -17,6 +17,11 @@ impl GlobalFormId {
             id,
         }
     }
+
+    /// Sets the load order index to the specified value
+    pub fn set_load_order_index(&mut self, load_order_index: u16) {
+        self.load_order_index = load_order_index;
+    }
 }
 
 impl Display for GlobalFormId {
