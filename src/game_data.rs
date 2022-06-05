@@ -196,6 +196,15 @@ impl GameData {
                 .get(&ingredient.global_form_id.load_order_index)
                 .unwrap();
             ingredient.global_form_id.set_load_order_index(new_index);
+
+            for ingredient_effect in ingredient.effects.iter_mut() {
+                let new_index = *index_remap_data
+                    .get(&ingredient_effect.global_form_id.load_order_index)
+                    .unwrap();
+                ingredient_effect
+                    .global_form_id
+                    .set_load_order_index(new_index);
+            }
         }
 
         // Create new ingredients hashmap with remapped global form IDs
@@ -246,6 +255,15 @@ impl GameData {
                 .get(&ingredient.global_form_id.load_order_index)
                 .unwrap();
             ingredient.global_form_id.set_load_order_index(new_index);
+
+            for ingredient_effect in ingredient.effects.iter_mut() {
+                let new_index = *index_remap_data
+                    .get(&ingredient_effect.global_form_id.load_order_index)
+                    .unwrap();
+                ingredient_effect
+                    .global_form_id
+                    .set_load_order_index(new_index);
+            }
         }
 
         // Create new ingredients hashmap with remapped global form IDs
