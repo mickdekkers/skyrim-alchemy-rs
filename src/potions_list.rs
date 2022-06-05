@@ -1,3 +1,4 @@
+use ahash::AHashSet;
 use serde::{ser::SerializeStruct, Serialize, Serializer};
 use std::{collections::HashSet, time::Instant};
 
@@ -165,14 +166,14 @@ impl<'a> PotionsList<'a> {
                     // Note: this function assumes the iterators are not empty
                     let edge_1 = edge_1
                         .map(|eff| eff.get_global_form_id())
-                        .collect::<HashSet<_>>();
+                        .collect::<AHashSet<_>>();
                     let edge_2 = edge_2
                         .map(|eff| eff.get_global_form_id())
-                        .collect::<HashSet<_>>();
+                        .collect::<AHashSet<_>>();
                     let edge_3 = edge_3.map(|edge_3| {
                         edge_3
                             .map(|eff| eff.get_global_form_id())
-                            .collect::<HashSet<_>>()
+                            .collect::<AHashSet<_>>()
                     });
 
                     // Each ingredient must contribute at least one unique effect when combined

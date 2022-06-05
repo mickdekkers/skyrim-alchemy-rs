@@ -1,3 +1,4 @@
+use ahash::AHashMap;
 use itertools::{EitherOrBoth::*, Itertools};
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
@@ -46,12 +47,12 @@ impl LoadOrder {
     /// that is passed in. Returns a HashMap of old index to new index which must be used to update
     /// any existing indexes into the LoadOrder.
     #[must_use]
-    pub fn drain_unused(&mut self, used_indexes: impl Iterator<Item = u16>) -> HashMap<u16, u16> {
+    pub fn drain_unused(&mut self, used_indexes: impl Iterator<Item = u16>) -> AHashMap<u16, u16> {
         let used_entries_with_old_indexes = used_indexes
             .sorted_unstable()
             .dedup()
             .map(|index| (self.get(index).unwrap().to_string(), index))
-            .collect::<HashMap<String, u16>>();
+            .collect::<AHashMap<String, u16>>();
 
         let num_removed = self
             .load_order

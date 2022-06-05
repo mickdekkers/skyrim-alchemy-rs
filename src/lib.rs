@@ -1,5 +1,6 @@
 #![feature(hash_drain_filter, drain_filter)]
 
+use ahash::{AHashMap, AHashSet};
 use anyhow::{anyhow, Context};
 use itertools::Itertools;
 use load_order::LoadOrder;
@@ -68,9 +69,9 @@ where
 
     let game_plugins_path = game_path.as_ref().join("Data");
 
-    let mut magic_effects = HashMap::<GlobalFormId, MagicEffect>::new();
-    let mut ingredients = HashMap::<GlobalFormId, Ingredient>::new();
-    let mut ingredient_effect_ids = HashSet::<GlobalFormId>::new();
+    let mut magic_effects = AHashMap::<GlobalFormId, MagicEffect>::new();
+    let mut ingredients = AHashMap::<GlobalFormId, Ingredient>::new();
+    let mut ingredient_effect_ids = AHashSet::<GlobalFormId>::new();
 
     for plugin_name in load_order.iter() {
         let plugin_path = game_plugins_path.join(plugin_name);
@@ -164,8 +165,8 @@ where
 
 pub fn suggest_potions<PImport>(
     import_path: PImport,
-    ingredients_blacklist: &HashSet<String>,
-    ingredients_whitelist: &HashSet<String>,
+    ingredients_blacklist: &AHashSet<String>,
+    ingredients_whitelist: &AHashSet<String>,
     limit: usize,
 ) -> Result<(), anyhow::Error>
 where

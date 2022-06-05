@@ -1,3 +1,4 @@
+use ahash::AHashMap;
 use itertools::Itertools;
 use serde::{
     de::{self, MapAccess, SeqAccess, Visitor},
@@ -42,8 +43,8 @@ fn get_ingredient_name_or_fallback(ingredient: &Ingredient) -> &str {
 // TODO: when serializing/deserializing game data, keep load order
 pub struct GameData {
     load_order: LoadOrder,
-    ingredients: HashMap<GlobalFormId, Ingredient>,
-    magic_effects: HashMap<GlobalFormId, MagicEffect>,
+    ingredients: AHashMap<GlobalFormId, Ingredient>,
+    magic_effects: AHashMap<GlobalFormId, MagicEffect>,
 }
 
 impl Serialize for GameData {
@@ -179,8 +180,8 @@ impl<'de> Deserialize<'de> for GameData {
 impl GameData {
     pub fn from_hashmaps(
         mut load_order: LoadOrder,
-        mut ingredients: HashMap<GlobalFormId, Ingredient>,
-        mut magic_effects: HashMap<GlobalFormId, MagicEffect>,
+        mut ingredients: AHashMap<GlobalFormId, Ingredient>,
+        mut magic_effects: AHashMap<GlobalFormId, MagicEffect>,
     ) -> Self {
         // Remove unused entries from the load order
         let used_indexes = ingredients
@@ -274,11 +275,11 @@ impl GameData {
         }
     }
 
-    pub fn get_ingredients(&self) -> &HashMap<GlobalFormId, Ingredient> {
+    pub fn get_ingredients(&self) -> &AHashMap<GlobalFormId, Ingredient> {
         &self.ingredients
     }
 
-    pub fn get_magic_effects(&self) -> &HashMap<GlobalFormId, MagicEffect> {
+    pub fn get_magic_effects(&self) -> &AHashMap<GlobalFormId, MagicEffect> {
         &self.magic_effects
     }
 

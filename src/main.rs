@@ -7,6 +7,7 @@ use std::{
     path::Path,
 };
 
+use ahash::AHashSet;
 use clap::{ArgGroup, Parser, Subcommand};
 use log::LevelFilter;
 
@@ -58,7 +59,7 @@ enum Commands {
     },
 }
 
-fn read_lines_to_hashset<P>(path: P) -> Result<HashSet<String>, anyhow::Error>
+fn read_lines_to_hashset<P>(path: P) -> Result<AHashSet<String>, anyhow::Error>
 where
     P: AsRef<Path>,
 {
@@ -67,7 +68,7 @@ where
     let lines = buf
         .lines()
         .map(|l| l.expect("Failed to read line").trim().to_string())
-        .collect::<HashSet<String>>();
+        .collect::<AHashSet<String>>();
     Ok(lines)
 }
 
