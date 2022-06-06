@@ -190,42 +190,44 @@ impl GameData {
             .map(|k| k.load_order_index);
         let index_remap_data = load_order.drain_unused(used_indexes);
 
-        // Remap load order indexes in ingredient global form IDs
-        for ingredient in ingredients.values_mut() {
-            let new_index = *index_remap_data
-                .get(&ingredient.global_form_id.load_order_index)
-                .unwrap();
-            ingredient.global_form_id.set_load_order_index(new_index);
-
-            for ingredient_effect in ingredient.effects.iter_mut() {
+        if let Some(index_remap_data) = index_remap_data {
+            // Remap load order indexes in ingredient global form IDs
+            for ingredient in ingredients.values_mut() {
                 let new_index = *index_remap_data
-                    .get(&ingredient_effect.global_form_id.load_order_index)
+                    .get(&ingredient.global_form_id.load_order_index)
                     .unwrap();
-                ingredient_effect
-                    .global_form_id
-                    .set_load_order_index(new_index);
+                ingredient.global_form_id.set_load_order_index(new_index);
+
+                for ingredient_effect in ingredient.effects.iter_mut() {
+                    let new_index = *index_remap_data
+                        .get(&ingredient_effect.global_form_id.load_order_index)
+                        .unwrap();
+                    ingredient_effect
+                        .global_form_id
+                        .set_load_order_index(new_index);
+                }
             }
+
+            // Remap load order indexes in magic_effect global form IDs
+            for magic_effect in magic_effects.values_mut() {
+                let new_index = *index_remap_data
+                    .get(&magic_effect.global_form_id.load_order_index)
+                    .unwrap();
+                magic_effect.global_form_id.set_load_order_index(new_index);
+            }
+
+            // Create new ingredients hashmap with remapped global form IDs
+            ingredients = ingredients
+                .into_iter()
+                .map(|(_k, v)| (v.get_global_form_id(), v))
+                .collect();
+
+            // Create new magic_effects hashmap with remapped global form IDs
+            magic_effects = magic_effects
+                .into_iter()
+                .map(|(_k, v)| (v.get_global_form_id(), v))
+                .collect();
         }
-
-        // Create new ingredients hashmap with remapped global form IDs
-        let ingredients = ingredients
-            .into_iter()
-            .map(|(_k, v)| (v.get_global_form_id(), v))
-            .collect();
-
-        // Remap load order indexes in magic_effect global form IDs
-        for magic_effect in magic_effects.values_mut() {
-            let new_index = *index_remap_data
-                .get(&magic_effect.global_form_id.load_order_index)
-                .unwrap();
-            magic_effect.global_form_id.set_load_order_index(new_index);
-        }
-
-        // Create new magic_effects hashmap with remapped global form IDs
-        let magic_effects = magic_effects
-            .into_iter()
-            .map(|(_k, v)| (v.get_global_form_id(), v))
-            .collect();
 
         Self {
             load_order,
@@ -249,38 +251,40 @@ impl GameData {
             .map(|x| x.load_order_index);
         let index_remap_data = load_order.drain_unused(used_indexes);
 
-        // Remap load order indexes in ingredient global form IDs
-        for ingredient in ingredients.iter_mut() {
-            let new_index = *index_remap_data
-                .get(&ingredient.global_form_id.load_order_index)
-                .unwrap();
-            ingredient.global_form_id.set_load_order_index(new_index);
-
-            for ingredient_effect in ingredient.effects.iter_mut() {
+        if let Some(index_remap_data) = index_remap_data {
+            // Remap load order indexes in ingredient global form IDs
+            for ingredient in ingredients.iter_mut() {
                 let new_index = *index_remap_data
-                    .get(&ingredient_effect.global_form_id.load_order_index)
+                    .get(&ingredient.global_form_id.load_order_index)
                     .unwrap();
-                ingredient_effect
-                    .global_form_id
-                    .set_load_order_index(new_index);
+                ingredient.global_form_id.set_load_order_index(new_index);
+
+                for ingredient_effect in ingredient.effects.iter_mut() {
+                    let new_index = *index_remap_data
+                        .get(&ingredient_effect.global_form_id.load_order_index)
+                        .unwrap();
+                    ingredient_effect
+                        .global_form_id
+                        .set_load_order_index(new_index);
+                }
+            }
+
+            // Remap load order indexes in magic_effect global form IDs
+            for magic_effect in magic_effects.iter_mut() {
+                let new_index = *index_remap_data
+                    .get(&magic_effect.global_form_id.load_order_index)
+                    .unwrap();
+                magic_effect.global_form_id.set_load_order_index(new_index);
             }
         }
 
-        // Create new ingredients hashmap with remapped global form IDs
+        // Create ingredients hashmap
         let ingredients = ingredients
             .into_iter()
             .map(|ing| (ing.get_global_form_id(), ing))
             .collect();
 
-        // Remap load order indexes in magic_effect global form IDs
-        for magic_effect in magic_effects.iter_mut() {
-            let new_index = *index_remap_data
-                .get(&magic_effect.global_form_id.load_order_index)
-                .unwrap();
-            magic_effect.global_form_id.set_load_order_index(new_index);
-        }
-
-        // Create new magic_effects hashmap with remapped global form IDs
+        // Create magic_effects hashmap
         let magic_effects = magic_effects
             .into_iter()
             .map(|mgef| (mgef.get_global_form_id(), mgef))

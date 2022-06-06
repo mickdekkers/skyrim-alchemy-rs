@@ -43,10 +43,13 @@ impl LoadOrder {
     }
 
     /// Removes unused entries from the LoadOrder based on the used indexes returned by the iterator
-    /// that is passed in. Returns a HashMap of old index to new index which must be used to update
-    /// any existing indexes into the LoadOrder.
+    /// that is passed in. If nothing was removed, returns None. Otherwise returns Some(HashMap) of
+    /// old index to new index which must be used to update any existing indexes into the LoadOrder.
     #[must_use]
-    pub fn drain_unused(&mut self, used_indexes: impl Iterator<Item = u16>) -> AHashMap<u16, u16> {
+    pub fn drain_unused(
+        &mut self,
+        used_indexes: impl Iterator<Item = u16>,
+    ) -> Option<AHashMap<u16, u16>> {
         let used_entries_with_old_indexes = used_indexes
             .sorted_unstable()
             .dedup()
@@ -58,13 +61,18 @@ impl LoadOrder {
             .drain_filter(|entry| !used_entries_with_old_indexes.contains_key(entry))
             .count();
 
-        log::debug!("Removed {} unused entries from load order", num_removed);
+        if num_removed == 0 {
+            return None;
+        }
 
-        used_entries_with_old_indexes
-            .iter()
-            // Create map from old index to new index
-            .map(|(entry, old_index)| (*old_index, self.find_index(entry).unwrap()))
-            .collect()
+        log::debug!("Removed {} unused entries from load order", num_removed);
+        Some(
+            used_entries_with_old_indexes
+                .iter()
+                // Create map from old index to new index
+                .map(|(entry, old_index)| (*old_index, self.find_index(entry).unwrap()))
+                .collect(),
+        )
     }
 }
 
