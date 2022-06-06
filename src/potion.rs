@@ -243,31 +243,28 @@ impl<'a> Potion<'a> {
         //     return Err(PotionCraftError::InvalidIngredient(ing_with_dup_effects));
         // }
 
-        let ingredients_effects = ingredients
-            .iter()
-            .flat_map(|ig| ig.effects.iter())
-            .sorted_by_key(|igef| igef.get_global_form_id())
-            .collect_vec();
+        let ingredients_effects_iter = ingredients.iter().flat_map(|ig| ig.effects.iter());
 
         // assert_eq!(ingredients_effects.len(), ingredients.len() * 4);
 
-        let ingredients_effects_counts = ingredients_effects
-            .iter()
+        let ingredients_effects_counts = ingredients_effects_iter
+            .clone()
             .counts_by(|igef| igef.get_global_form_id());
 
         // if ingredients_effects_counts.values().all(|count| *count < 2) {
         //     return Err(PotionCraftError::NoSharedEffects);
         // }
 
+        // TODO: research how the game breaks ties in potion effect strength
         // active effects are those that appear in more than one ingredient
-        let active_effects = ingredients_effects
-            .iter()
+        let active_effects = ingredients_effects_iter
             .filter(|igef| {
                 *(ingredients_effects_counts
                     .get(&igef.get_global_form_id())
                     .unwrap())
                     > 1
             })
+            .sorted_by_key(|igef| igef.get_global_form_id())
             .map(|igef| PotionEffect::from_ingredient_effect(igef, game_data))
             .coalesce(|potef1, potef2| {
                 if potef1.get_global_form_id() == potef2.get_global_form_id() {
