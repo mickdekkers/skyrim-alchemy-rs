@@ -57,7 +57,7 @@ impl Ingredient {
         &'a self,
         other: &'a Ingredient,
     ) -> Peekable<impl Iterator<Item = &IngredientEffect> + '_> {
-        // Note: effects vecs are sorted and (essentially) limited to 4 elements, so this shouldn't be too slow
+        // Note: effects vecs are sorted and limited to 4 elements, so this shouldn't be too slow
         self.effects
             .iter()
             .filter(|self_effect| other.effects.iter().contains(self_effect))

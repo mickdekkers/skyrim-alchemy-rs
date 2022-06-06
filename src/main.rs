@@ -37,6 +37,7 @@ enum Commands {
         export_path: String,
     },
 
+    // TODO: add CLI flag for reading saves Y/N
     // TODO: provide option to suggest potions using only ingredients that the player has
     /// Suggests potions to mix using the ingredients and magic effects in the game data.
     #[clap(group(ArgGroup::new("ingredients-filter").args(&["ingredients-blacklist-path", "ingredients-whitelist-path"])))]
@@ -53,6 +54,9 @@ enum Commands {
         /// Limit the number of suggestions to at most this many potions.
         #[clap(long, default_value_t = 20usize)]
         limit: usize,
+        /// Path to the directory containing your save files. Defaults to %UserProfile%/Documents/My Games/Skyrim Special Edition/Saves if not specified.
+        #[clap(long)]
+        saves_path: Option<String>,
         /// Path to the JSON file that contains the game data. This file can be obtained through the
         /// export-game-data subcommand.
         data_path: String,
@@ -97,6 +101,7 @@ fn main() -> Result<(), anyhow::Error> {
         }
         Commands::SuggestPotions {
             data_path,
+            saves_path,
             ingredients_blacklist_path: ingredients_blacklist_file,
             ingredients_whitelist_path: ingredients_whitelist_file,
             limit,
@@ -114,6 +119,7 @@ fn main() -> Result<(), anyhow::Error> {
 
             skyrim_alchemy_rs::suggest_potions(
                 data_path,
+                saves_path.as_ref(),
                 &ingredients_blacklist,
                 &ingredients_whitelist,
                 *limit,
