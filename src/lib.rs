@@ -80,7 +80,7 @@ where
             &plugin_mmap,
             plugin_name,
             &game_plugins_path,
-            &load_order,
+            &mut load_order,
         )?;
 
         log::debug!(

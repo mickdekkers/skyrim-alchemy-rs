@@ -28,7 +28,7 @@ pub fn parse_plugin<'a>(
     input: &'a [u8],
     plugin_name: &str,
     game_plugins_path: &Path,
-    load_order: &LoadOrder,
+    load_order: &mut LoadOrder,
 ) -> Result<(Vec<Ingredient>, Vec<MagicEffect>), anyhow::Error> {
     log::trace!("Parsing plugin {}", plugin_name);
 
@@ -55,14 +55,21 @@ pub fn parse_plugin<'a>(
 
     let is_localized = (header_record.header().flags() & 0x80) != 0;
 
+    let is_light_master = (header_record.header().flags() & 0x200) != 0;
+    if is_light_master {
+        load_order.plugin_is_esl_flagged(plugin_name);
+    }
+
     log::trace!("Plugin masters: {:#?}", masters);
     log::trace!("Plugin is_localized: {:?}", is_localized);
+    log::trace!("Plugin is_light_master: {:?}", is_light_master);
 
     let strings_table = match is_localized {
         true => StringsTable::new(plugin_name, game_plugins_path),
         false => None,
     };
 
+    // Converts plugin-local form ID to proper (global) form ID
     let globalize_form_id = |form_id: NonZeroU32| -> Result<GlobalFormId, anyhow::Error> {
         // See https://en.uesp.net/wiki/Skyrim:Form_ID
         let mod_id = (u32::from(form_id) >> 24) as usize;
@@ -82,14 +89,22 @@ pub fn parse_plugin<'a>(
             }
         }?;
 
+        // TODO: ESL
+
+        let is_esl = mod_name.ends_with(".esl");
+
         // The last six hex digits are the ID of the record itself
-        let id = u32::from(form_id) & 0x00FFFFFF;
+        let record_id = u32::from(form_id) & 0x00FFFFFF;
 
         let load_order_index = load_order
-            .find_index(&mod_name)
+            .get_form_id_prefix(&mod_name)
             .ok_or_else(|| anyhow!("plugin {} not found in load order!", &mod_name))?;
 
-        Ok(GlobalFormId::new(load_order_index, id))
+        let load_order_index = load_order_index & 0xFF000000;
+
+        let form_id = load_order_index as u32 | record_id;
+
+        Ok(GlobalFormId::new(form_id))
     };
 
     let parse_lstring =
