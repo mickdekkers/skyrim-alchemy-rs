@@ -3,14 +3,14 @@ use itertools::Itertools;
 use lazy_static::lazy_static;
 use log_err::{LogErrOption, LogErrResult};
 use nom::IResult;
-use skyrim_savegame::{read_vsval_to_u32, ChangeForm, FormIdType, SaveFile, VSVal};
+use skyrim_savegame::{read_vsval_to_u32, ChangeForm, FormIdType, RefId, SaveFile, VSVal};
 use std::collections::{HashMap, HashSet};
 use std::ffi::OsString;
 use std::fs;
 use std::fs::File;
 use std::io::BufReader;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, Instant, SystemTime};
 
 use crate::game_data::GameData;
 use crate::plugin_parser::form_id::GlobalFormId;
@@ -93,9 +93,12 @@ where
 {
     let save_data = get_latest_save_data(saves_path)?;
     // TODO: this may panic. Catch somehow?
+    let start = Instant::now();
     let save_file = skyrim_savegame::parse_save_file(save_data);
+    log::debug!("Rudimentarily parsed save file (in {:?})", start.elapsed());
     log::info!("{:#?}", save_file);
 
+    let start = Instant::now();
     let player_change_form = save_file
         .change_forms
         .iter()
@@ -111,9 +114,9 @@ where
             })
         })
         .log_expect("save game contains no player data");
+    log::debug!("Found player change form (in {:?})", start.elapsed());
 
-    dbg!(player_change_form);
-
+    let start = Instant::now();
     // See https://en.uesp.net/wiki/Skyrim_Mod:ChangeFlags#Initial_type
     // Note: assumes ACHR change form type
     let initial_type: u32 = {
@@ -148,7 +151,7 @@ where
         nom::combinator::cond(
             initial_type_size != 0,
             // Skip initial data
-            nom::bytes::complete::take::<_, &[u8], nom::error::Error<_>>(initial_type_size),
+            nom::bytes::complete::take(initial_type_size),
         ),
         nom::combinator::cond(
             // CHANGE_REFR_HAVOK_MOVE flag
@@ -178,6 +181,10 @@ where
         ),
     ))(player_change_form.data.as_ref())
     .map_err(nom_err_to_anyhow_err)?;
+    log::debug!(
+        "Skipped irrelevant data in player change form (in {:?})",
+        start.elapsed()
+    );
 
     // Now comes the extra data (probably), which we don't have enough information on to skip
 
@@ -190,9 +197,84 @@ where
     // would be cool if we could use rayon, but probably not needed
 
     // TODO: somehow prevent / filter out false positives in case some random bytes happen to match a known form ID. Perhaps consider index where found and eliminate outliers at start and end? Inventory entries should be fairly close together, though each entry can also have zero or more extra datas (I'm guessing these will be rather small?)
+    // TODO: need to somehow translate form ID in save to GlobalFormId... How does runtime form ID map to form ID in data? Read wiki.
+
+    log::debug!(
+        "Will try to parse inventory items from remaining {} bytes of player data",
+        remaining_data.len()
+    );
+
+    let start = Instant::now();
+
+    // TODO: need to parallelize this somehow, it's pretty slow
+    let mut remaining_data = remaining_data;
+    let mut inventory_items = vec![];
+    while !remaining_data.is_empty() {
+        // TODO: constrain success condition to known ingredient form IDs
+        match partial_inventory_item(remaining_data, &save_file) {
+            Ok((remaining_input, inventory_item)) => {
+                inventory_items.push(inventory_item);
+                // Move cursor by length of successfully consumed data
+                remaining_data = remaining_input;
+            }
+            Err(_) => {
+                // Move cursor one byte, try again next iteration
+                remaining_data = &remaining_data[1..];
+            }
+        }
+    }
+
+    log::debug!(
+        "Parsed {} inventory items (in {:?})",
+        inventory_items.len(),
+        start.elapsed()
+    );
+    dbg!(inventory_items);
 
     todo!();
     // Ok(())
+}
+
+fn partial_inventory_item<'a>(
+    input: &'a [u8],
+    save_file: &SaveFile,
+) -> Result<(&'a [u8], (u32, i32)), anyhow::Error> {
+    let (remaining_input, form_id) = parse_ref_id_to_form_id(input, save_file)?;
+
+    // I don't believe we'll ever see an ingredient with a form ID of exactly 0x00000000
+    if form_id == 0x00000000 {
+        return Err(anyhow!("form ID is 0x00000000"));
+    }
+
+    // TODO: form ID probably won't be dynamically allocated, so it shouldn't start with 0xFF
+
+    // TODO: match form ID to known ingredient form IDs
+    // TODO: mod organizer has it right! check the form ID starts against that
+
+    // The item count i32 is followed by a vsval indicating the count of extra data for this item. We don't care about this value, but we can use it to improve parsing accuracy
+    // TODO: determine whether really i32 or actually u32
+    let (remaining_input, item_count) =
+        nom::sequence::terminated(nom::number::complete::le_i32, read_vsval)(remaining_input)
+            .map_err(nom_err_to_anyhow_err)?;
+
+    Ok((remaining_input, (form_id, item_count)))
+}
+
+fn parse_ref_id_to_form_id<'a>(
+    input: &'a [u8],
+    save_file: &SaveFile,
+) -> Result<(&'a [u8], u32), anyhow::Error> {
+    let (remaining_input, three_bytes) = nom::bytes::complete::take(3usize)(input)
+        .map_err(|err: nom::Err<(_, nom::error::ErrorKind)>| nom_err_to_anyhow_err(err))?;
+    let (byte0, byte1, byte2) = (three_bytes[0], three_bytes[1], three_bytes[2]);
+    let ref_id = RefId {
+        byte0,
+        byte1,
+        byte2,
+    };
+    let form_id = get_real_form_id(&ref_id.get_form_id(), save_file)?;
+
+    Ok((remaining_input, form_id))
 }
 
 #[derive(Debug)]
@@ -221,8 +303,25 @@ fn get_real_form_id(raw_form_id: &FormIdType, save_file: &SaveFile) -> Result<u3
     }
 }
 
-/// Reads a vsval to u32. If it has an invalid size indicator, returns 0
-pub fn read_vsval(input: &[u8]) -> IResult<&[u8], u32> {
+#[derive(Debug, PartialEq)]
+pub enum CustomError<I> {
+    InvalidVsvalValueType,
+    Nom(I, nom::error::ErrorKind),
+}
+
+impl<I> nom::error::ParseError<I> for CustomError<I> {
+    fn from_error_kind(input: I, kind: nom::error::ErrorKind) -> Self {
+        CustomError::Nom(input, kind)
+    }
+
+    // TODO: see if we need to impl this differently, + other methods on ParseError trait
+    fn append(_: I, _: nom::error::ErrorKind, other: Self) -> Self {
+        other
+    }
+}
+
+/// Reads a vsval to u32
+pub fn read_vsval(input: &[u8]) -> IResult<&[u8], u32, CustomError<&[u8]>> {
     let (input, first_byte) = nom::number::complete::le_u8(input)?;
     let val_type_enc = first_byte & 0b00000011;
     match val_type_enc {
@@ -246,8 +345,8 @@ pub fn read_vsval(input: &[u8]) -> IResult<&[u8], u32> {
             ))
         }
         _ => {
-            log::error!("Found invalid vsval!");
-            Ok((input, 0))
+            // TODO: determine if should be unrecoverable (I'm guessing not)
+            Err(nom::Err::Error(CustomError::InvalidVsvalValueType))
         }
     }
 }
