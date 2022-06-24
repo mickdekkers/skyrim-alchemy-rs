@@ -206,12 +206,11 @@ where
 
     let start = Instant::now();
 
-    // TODO: need to parallelize this somehow, it's pretty slow
+    // TODO: the same ingredient (probably) won't appear multiple times. Pick one with lowest item count?
     let mut remaining_data = remaining_data;
     let mut inventory_items = vec![];
     while !remaining_data.is_empty() {
-        // TODO: constrain success condition to known ingredient form IDs
-        match partial_inventory_item(remaining_data, &save_file) {
+        match partial_inventory_item(remaining_data, &save_file, game_data) {
             Ok((remaining_input, inventory_item)) => {
                 inventory_items.push(inventory_item);
                 // Move cursor by length of successfully consumed data
@@ -229,7 +228,23 @@ where
         inventory_items.len(),
         start.elapsed()
     );
-    dbg!(inventory_items);
+    log::debug!(
+        "Inventory:\n{}",
+        inventory_items
+            .iter()
+            .map(|(form_id, count)| format!(
+                "{} ({}): {}",
+                form_id,
+                game_data
+                    .get_ingredient(form_id)
+                    .unwrap()
+                    .name
+                    .as_ref()
+                    .unwrap(),
+                count
+            ))
+            .join("\n")
+    );
 
     todo!();
     // Ok(())
@@ -238,7 +253,8 @@ where
 fn partial_inventory_item<'a>(
     input: &'a [u8],
     save_file: &SaveFile,
-) -> Result<(&'a [u8], (u32, i32)), anyhow::Error> {
+    game_data: &GameData,
+) -> Result<(&'a [u8], (GlobalFormId, i32)), anyhow::Error> {
     let (remaining_input, form_id) = parse_ref_id_to_form_id(input, save_file)?;
 
     // I don't believe we'll ever see an ingredient with a form ID of exactly 0x00000000
@@ -246,16 +262,32 @@ fn partial_inventory_item<'a>(
         return Err(anyhow!("form ID is 0x00000000"));
     }
 
-    // TODO: form ID probably won't be dynamically allocated, so it shouldn't start with 0xFF
+    // Form IDs starting with 0xFF are dynamically allocated, ingredients (probably) don't have this
+    if form_id & 0xFF000000 != 0 {
+        return Err(anyhow!("form ID starts with 0xFF"));
+    }
 
-    // TODO: match form ID to known ingredient form IDs
-    // TODO: mod organizer has it right! check the form ID starts against that
+    // FIXME: make work for non skyrim.esm form IDs
+    let form_id = GlobalFormId::new((form_id & 0xFF000000) as u16, form_id & 0x00FFFFFF);
+
+    if !game_data.has_ingredient(&form_id) {
+        return Err(anyhow!("form ID is not a known ingredient"));
+    }
+
+    // TODO: mod organizer has it right! check the form ID prefixes against that
 
     // The item count i32 is followed by a vsval indicating the count of extra data for this item. We don't care about this value, but we can use it to improve parsing accuracy
-    // TODO: determine whether really i32 or actually u32
     let (remaining_input, item_count) =
         nom::sequence::terminated(nom::number::complete::le_i32, read_vsval)(remaining_input)
             .map_err(nom_err_to_anyhow_err)?;
+
+    if item_count < 1 {
+        return Err(anyhow!("item count is less than 1"));
+    }
+
+    if item_count > 5000 {
+        return Err(anyhow!("item count is improbably high"));
+    }
 
     Ok((remaining_input, (form_id, item_count)))
 }

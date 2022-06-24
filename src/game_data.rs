@@ -313,6 +313,10 @@ impl GameData {
         self.ingredients.get(global_form_id)
     }
 
+    pub fn has_ingredient(&self, global_form_id: &GlobalFormId) -> bool {
+        self.ingredients.contains_key(global_form_id)
+    }
+
     pub fn validate(&self) -> Result<(), Vec<IngredientError>> {
         let ings_with_unknown_mgefs = self
             .ingredients
